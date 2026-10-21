@@ -3112,6 +3112,7 @@ nvm() {
         nvm_echo '    --lts                                     When listing, only select from LTS (long-term support) versions'
         nvm_echo '    --lts=<LTS name>                          When listing, only select from versions for a specific LTS line'
         nvm_echo '  nvm deactivate                              Undo effects of `nvm` on current shell'
+        nvm_echo '  nvm auto [on|off|status|refresh]             Control project version switching in interactive zsh'
         nvm_echo '    --silent                                  Silences stdout/stderr output'
         nvm_echo '  nvm alias [<pattern>]                       Show all aliases beginning with <pattern>'
         nvm_echo '    --no-colors                               Suppress colored output'
@@ -3168,6 +3169,21 @@ nvm() {
   local ADDITIONAL_PARAMETERS
 
   case $COMMAND in
+    "auto")
+      if ! nvm_is_zsh || [ "${-#*i}" = "$-" ]; then
+        nvm_err 'nvm auto requires an interactive zsh shell.'
+        return 1
+      fi
+      if ! nvm_has nvm_auto_switch_command; then
+        if [ ! -r "${NVM_DIR}/auto-switch/nvm-auto-switch.zsh" ]; then
+          nvm_err 'nvm auto resources are missing; reinstall this fork to restore auto-switch/.'
+          return 1
+        fi
+        # shellcheck disable=SC1091
+        . "${NVM_DIR}/auto-switch/nvm-auto-switch.zsh" || return $?
+      fi
+      nvm_auto_switch_command "$@"
+    ;;
     "cache")
       case "${1-}" in
         dir) nvm_cache_dir ;;
@@ -4438,9 +4454,12 @@ nvm() {
       NVM_VERSION_ONLY=true NVM_LTS="${NVM_LTS-}" nvm_remote_version "${PATTERN:-node}"
     ;;
     "--version" | "-v")
-      nvm_echo '0.40.3'
+      nvm_echo '0.40.3-auto.1'
     ;;
     "unload")
+      if nvm_has nvm_auto_switch_unload; then
+        nvm_auto_switch_unload
+      fi
       nvm deactivate >/dev/null 2>&1
       unset -f nvm \
         nvm_iojs_prefix nvm_node_prefix \

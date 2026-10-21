@@ -7,6 +7,7 @@ permissions:
 
 jobs:
   _:
+    if: github.repository == 'nvm-sh/nvm'
     permissions:
       contents: write
     name: "update readme TOC"

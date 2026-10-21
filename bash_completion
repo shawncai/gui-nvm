@@ -25,7 +25,7 @@ __nvm_commands() {
     alias unalias reinstall-packages
     current list ls list-remote ls-remote
     install-latest-npm
-    cache deactivate unload
+    cache deactivate unload auto
     version version-remote which'
 
   if [ ${#COMP_WORDS[@]} == 4 ]; then
@@ -72,6 +72,7 @@ __nvm() {
   previous_word="${COMP_WORDS[COMP_CWORD - 1]}"
 
   case "${previous_word}" in
+    auto) __nvm_generate_completion 'on off status refresh' ;;
     use | run | exec | ls | list | uninstall) __nvm_installed_nodes ;;
     alias | unalias) __nvm_alias ;;
     *) __nvm_commands ;;

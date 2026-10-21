@@ -1,3 +1,5 @@
+> **shawncai/nvm `v0.40.3-auto.1`**: zsh 自动识别项目 Node 版本。请先阅读[中文使用、安装与回滚说明](README.auto-switch.zh-CN.md)。本 Fork 使用 `install-fork.sh` 迁移；下面保留的 `install.sh` 和上游安装文档仍属于原版 nvm v0.40.3。
+
 <a href="https://github.com/nvm-sh/logos">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/nvm-sh/logos/HEAD/nvm-logo-white.svg" />

@@ -7,6 +7,7 @@ permissions:
 
 jobs:
   tests:
+    if: github.repository == 'nvm-sh/nvm'
     permissions:
       contents: write
 
@@ -71,6 +72,7 @@ jobs:
       - run: make TERM=xterm-256color TEST_SUITE="${{ matrix.suite }}" SHELL="${{ matrix.shell }}" URCHIN="$(npx which urchin)" test-${{ matrix.shell }}
 
   nvm:
+    if: github.repository == 'nvm-sh/nvm'
     permissions:
       contents: none
     name: 'all test suites, all shells'

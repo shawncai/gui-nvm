@@ -16,6 +16,11 @@ npm-debug.log
 
 .DS_Store
 current
+._*
+output/
+!auto-switch/vendor/
+!auto-switch/vendor/**
+!auto-switch/verify-vendor.py
 /default-packages
 
 # Only apps should have lockfiles

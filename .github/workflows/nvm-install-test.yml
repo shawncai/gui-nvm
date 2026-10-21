@@ -12,6 +12,7 @@ on:
 
 jobs:
   matrix:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -40,6 +41,7 @@ jobs:
           fi
 
   test:
+    if: github.repository == 'nvm-sh/nvm'
     needs: [matrix]
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.ref == 'v0.40.0' }} # https://github.com/nvm-sh/nvm/issues/3405
@@ -98,6 +100,7 @@ jobs:
           fi
 
   finisher:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     needs: [test]
     steps:

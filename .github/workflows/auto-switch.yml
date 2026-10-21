@@ -1,0 +1,34 @@
+name: Auto-switch fork
+on:
+  push:
+    branches: [auto-switch]
+    tags: ['v*-auto.*']
+  pull_request:
+    branches: [auto-switch]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: auto-switch-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.3'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '8.15.8'
+          run_install: false
+      - name: Install zsh on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: Isolated offline tests (no project dependency installation)
+        run: pnpm run test:auto

@@ -7,6 +7,7 @@ permissions:
 
 jobs:
   eclint:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
@@ -24,6 +25,7 @@ jobs:
       - run: npm run eclint
 
   dockerfile_lint:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
@@ -43,6 +45,7 @@ jobs:
       - run: npm run dockerfile_lint
 
   doctoc:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
@@ -60,6 +63,7 @@ jobs:
       - run: npm run doctoc:check
 
   test_naming:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2

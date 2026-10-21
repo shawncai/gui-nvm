@@ -7,6 +7,7 @@ permissions:
 
 jobs:
   matrix:
+    if: github.repository == 'nvm-sh/nvm'
     runs-on: ubuntu-latest
     outputs:
       latest: ${{ steps.set-matrix.outputs.requireds }}
@@ -26,6 +27,7 @@ jobs:
           preset: '>=1'
 
   nodes:
+    if: github.repository == 'nvm-sh/nvm'
     needs: [matrix]
     permissions:
       contents: read
@@ -77,6 +79,7 @@ jobs:
       - run: npm --version
 
   node:
+    if: github.repository == 'nvm-sh/nvm'
     permissions:
       contents: none
     name: 'nvm install-latest-npm'
