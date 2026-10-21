@@ -116,9 +116,17 @@ with tempfile.TemporaryDirectory(prefix='nvm-upstream-') as temporary:
                 'HOME': str(sandbox / 'user'), 'NVM_DIR': str(tree), 'PATH': str(tools),
                 'TMPDIR': str(sandbox / 'tmp'), 'TERM': 'xterm-256color', 'SHELL': executable,
                 'TEST_AUTO_FIXTURES': str(fixtures), 'TEST_AUTO_BLOCKED': str(blocked),
-                'LC_ALL': 'C', 'IFS': ' \t\n',
+                'LC_ALL': 'C',
             }
             target = tree / test
+            if test == "test/fast/Running 'nvm unload' should unset all function and variables":
+                # Upstream intends to ignore IFS, but line-based grep leaves the
+                # newline inside exported IFS behind on some shells. Remove the
+                # variable before env serializes it; keep every other assertion.
+                original = target.read_text()
+                prefix = 'env | grep -v PATH= | grep -v IFS='
+                assert original.count(prefix) == 2, 'Upstream unload fixture changed'
+                target.write_text(original.replace(prefix, 'env -u IFS | grep -v PATH='))
             command = [executable]
             if shell == 'zsh':
                 command.append('-f')
