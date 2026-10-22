@@ -1,0 +1,27 @@
+{
+  "task": "缩小界面字号",
+  "date": "2026-10-21",
+  "items": [
+    {
+      "task": "缩小桌面和响应式界面字号，保留层级与点击区域",
+      "done": true
+    },
+    {
+      "task": "构建并检查桌面、版本页面与移动端显示",
+      "done": true
+    },
+    {
+      "task": "记录截图，dot_clean，关闭测试服务与浏览器",
+      "done": true
+    }
+  ],
+  "validation": {
+    "build": "passed",
+    "browser": "Chrome: 1487×1058, 1280×900, 390×844; project list, inspector menu, installed versions",
+    "consoleErrors": 0,
+    "consoleWarnings": 0,
+    "browserClosed": true,
+    "testPort4786Closed": true,
+    "screenshot": "output/playwright/15-font-compact-desktop.png"
+  }
+}

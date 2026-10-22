@@ -1,0 +1,52 @@
+{
+  "task": "SwiftUI native macOS app",
+  "date": "2026-10-22",
+  "items": [
+    {
+      "id": "project",
+      "label": "Xcode app/core/test targets and bundled resources",
+      "done": true
+    },
+    {
+      "id": "core",
+      "label": "Scanning, semver, declarations and safe writes",
+      "done": true
+    },
+    {
+      "id": "runtime",
+      "label": "Catalog, proxy, isolated install and process cleanup",
+      "done": true
+    },
+    {
+      "id": "migration",
+      "label": "Native state migration and NVM directory selection",
+      "done": true
+    },
+    {
+      "id": "ui",
+      "label": "Four SwiftUI pages, editing and lifecycle",
+      "done": true
+    },
+    {
+      "id": "tests",
+      "label": "Core, process, migration and UI verification",
+      "done": true
+    },
+    {
+      "id": "regression",
+      "label": "Existing Web and auto-switch regression",
+      "done": true
+    },
+    {
+      "id": "package",
+      "label": "Release app, signing, DMG and installed launch",
+      "done": true
+    },
+    {
+      "id": "cleanup",
+      "label": "Stop task processes, unmount images, dot_clean",
+      "done": true
+    }
+  ],
+  "verification": "verification.json"
+}

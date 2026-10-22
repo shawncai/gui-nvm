@@ -1,6 +1,6 @@
 # nvm 自动切换 Fork
 
-本 Fork 基于上游 **nvm v0.40.3**，增加交互式 zsh 的项目 Node 版本自动切换。仓库为 [shawncai/nvm](https://github.com/shawncai/nvm)，维护分支为 `auto-switch`，首版发布标签为 `v0.40.3-auto.1`。上游使用说明见 [README.md](README.md)。
+本 Fork 基于上游 **nvm v0.40.3**，增加交互式 zsh 的项目 Node 版本自动切换。仓库为 [shawncai/gui-nvm](https://github.com/shawncai/gui-nvm)，维护分支为 `auto-switch`，首版发布标签为 `v0.40.3-auto.1`。图形应用指南见 [README.md](README.md)，完整 nvm 命令说明见 [上游 v0.40.3 文档](https://github.com/nvm-sh/nvm/blob/v0.40.3/README.md)。
 
 ## 自动识别规则
 
@@ -44,7 +44,7 @@ nvm auto off      # 移除本 shell 的自动切换钩子
 
 ```sh
 mkdir -p "$HOME/.local/share"
-git clone --branch auto-switch https://github.com/shawncai/nvm.git "$HOME/.local/share/nvm-fork"
+git clone --branch auto-switch https://github.com/shawncai/gui-nvm.git "$HOME/.local/share/nvm-fork"
 cd "$HOME/.local/share/nvm-fork"
 git checkout v0.40.3-auto.1
 bash install-fork.sh --nvm-dir "$HOME/.nvm" --profile "${ZDOTDIR:-$HOME}/.zshrc"

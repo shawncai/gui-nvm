@@ -11,7 +11,7 @@
 安装（已有 nvm 和 Node，macOS/Linux，交互式 zsh）：
 
 ```sh
-git clone --branch v0.40.3-auto.1 https://github.com/shawncai/nvm.git "$HOME/.local/share/nvm-fork"
+git clone --branch v0.40.3-auto.1 https://github.com/shawncai/gui-nvm.git "$HOME/.local/share/nvm-fork"
 bash "$HOME/.local/share/nvm-fork/install-fork.sh"
 exec zsh
 nvm auto status

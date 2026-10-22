@@ -1,0 +1,9 @@
+{
+  "mode": "built-in image_gen",
+  "master": "AppIcon.png",
+  "direction": "Emerald folded N on graphite, transparent outside the native app tile",
+  "prompt": "Use case: logo-brand. Asset type: final production macOS app icon for gui-nvm, a native Node.js version manager. Create ONE exceptionally polished 1024 by 1024 square app icon, with genuine transparency outside the rounded app tile. The tile is a deep graphite continuous-corner square, centered and filling roughly 86 percent of the canvas, subtle upper-left light, restrained soft contact shadow, crisp silhouette. Center a bold, highly legible sculptural capital N built from one continuous folded emerald-green ribbon: two upright pillars joined by a precise diagonal bridge. The folding subtly suggests switching between Node versions. Broad simple planes, rounded bevels, mint highlight on the top-facing planes and deep forest-green sides. Calm, premium native macOS utility aesthetic, almost orthographic face-on with only minimal dimensional depth; balanced symmetry, exact geometry, ample breathing room. The N should dominate and remain identifiable at 16 and 32 pixels. Only this single glyph on a dark tile. No terminal prompt, no underscore, no text labels, no tiny dots, no badges, no extra cubes or nodes, no arrows, no circuit board, no letters other than the geometric N, no watermark, no photo scene, no mockup, no multiple concepts, no checkerboard background. This is the actual icon asset, not a presentation.",
+  "transparentBackground": true,
+  "generatedSizes": "xcrun swift macos/scripts/make-icon.swift macos",
+  "dependenciesAdded": false
+}

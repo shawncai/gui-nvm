@@ -1,0 +1,110 @@
+{
+  "date": "2026-10-22",
+  "environment": {
+    "macOS": "15.7.5 (24G624)",
+    "architecture": "arm64",
+    "Xcode": "26.0.1 (17A400)",
+    "minimumDeployment": "14.0",
+    "macOS14HardwareVerified": false
+  },
+  "nativeTests": {
+    "total": 35,
+    "passed": 34,
+    "skippedByDefault": 1,
+    "failures": 0,
+    "log": "output/macos/qa/native-tests.log"
+  },
+  "officialInstallSmoke": {
+    "passed": true,
+    "version": "v22.22.3",
+    "archiveBytes": 25951828,
+    "seconds": 152.368,
+    "checksumVerified": true,
+    "binaryVersionVerified": true,
+    "defaultAliasUnchanged": true,
+    "temporaryDirectoryAndProcessGroupCleaned": true,
+    "log": "output/macos/qa/network-smoke.log"
+  },
+  "regression": {
+    "node": "22.22.3",
+    "packageManager": "pnpm",
+    "webTests": "15 passed",
+    "webBuild": "passed",
+    "resolver": "52 passed",
+    "zsh": "passed",
+    "installer": "98 passed",
+    "compatibility": "75 passed"
+  },
+  "interface": {
+    "projects": "Verified keyboard table navigation, search and empty results, system directory picker, manual project addition and long path truncation.",
+    "configuration": "Verified preview, save, external file change invalidation with unsaved input preserved, re-preview, and trimmed custom semver saving without a false conflict.",
+    "versions": "Verified installed/available lists, major-latest/history selection, lifecycle labels and project reference counts.",
+    "tasks": "Verified confirmation, running phase and logs, cancellation and final cancelled state.",
+    "settings": "Verified NVM path and architecture, scan statistics, default version confirmation and isolated alias file update.",
+    "layout": "Verified light three-column UI, neutral selection contrast and resize from 1380x850 points to approximately 1093x712 points.",
+    "exit": "Debug and installed Release both exited with status 0 after closing the last window; no app or installation child remained."
+  },
+  "delivery": {
+    "releaseBuild": "passed",
+    "app": "output/macos/gui-nvm.app",
+    "dmg": "output/macos/gui-nvm-0.1.0-arm64.dmg",
+    "dmgSHA256": "620fbd4272db3f0c809be26e562dc890fd7a81aa13fe2e35af874f283bd8fcd3",
+    "installedApp": "~/Applications/gui-nvm.app",
+    "signature": "ad-hoc + Hardened Runtime; strict verification passed",
+    "appSandbox": false,
+    "notarized": false,
+    "dmgReadOnlyMountVerified": true,
+    "dmgApplicationsShortcutVerified": true,
+    "installedLaunch": "Launched from /tmp with PATH=/usr/bin:/bin:/usr/sbin:/sbin; no Node, pnpm or Web service needed. Bundled resources match source; dynamic links are system libraries/frameworks only."
+  },
+  "limitations": [
+    "macOS 14 minimum deployment compiled but not exercised on a macOS 14 machine.",
+    "No Developer ID notarization; cross-machine Gatekeeper approval is not guaranteed."
+  ],
+  "cleanup": {
+    "applicationsStopped": true,
+    "testProcessesStopped": true,
+    "installationProcessesStopped": true,
+    "dmgDetached": true,
+    "testFixtureCleanup": "Only task-created isolated fixtures and obsolete build directories are removed. User project files and real default alias were not modified."
+  },
+  "iconRefresh": {
+    "date": "2026-10-22",
+    "master": "Brand/AppIcon.png",
+    "design": "Brand/icon-design.json",
+    "generatedSizes": 10,
+    "nativeTests": {
+      "passed": 34,
+      "skippedNetworkSmokeAlreadyVerified": 1,
+      "failures": 0
+    },
+    "webTests": {
+      "passed": 15,
+      "failures": 0
+    },
+    "webBuild": "passed",
+    "autoSwitchRegression": "passed",
+    "releaseBuild": "passed",
+    "dmgChecksum": "passed",
+    "installedBundleSignature": "passed",
+    "installedCompiledIcon": "extracted from AppIcon.icns and visually verified at 128px; source assets also inspected at 32px",
+    "windowAutomation": "The GUI automation service could not locate application windows during this refresh. No live-window visual result is claimed for this refresh."
+  },
+  "releaseReview": {
+    "date": "2026-10-22",
+    "cleanStagedCheckoutReleaseBuild": "passed",
+    "launcherGitMode": "100755",
+    "candidateFilesReviewed": 500,
+    "visibleHistoryCommitsReviewed": 2450,
+    "stagedFiles": 80,
+    "actualCredentialsFound": 0,
+    "privateWorkingPathsInStagedContent": 0,
+    "excludedLocalOnly": [
+      "design/",
+      "prompt/",
+      "design-qa.md",
+      "output/"
+    ],
+    "newDependenciesAddedByIconAndDocumentationTask": false
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "name": "nvm",
+  "name": "gui-nvm",
   "version": "0.40.3-auto.1",
   "description": "Node Version Manager - Simple bash script to manage multiple active node.js versions",
   "directories": {
@@ -23,11 +23,15 @@
     "eclint": "eclint check $(git ls-tree --name-only HEAD | xargs)",
     "dockerfile_lint": "dockerfile_lint",
     "markdown-link-check": "git ls-files | command grep -E '\\.md$' | xargs -n 1 markdown-link-check -p",
-    "test:auto": "bash test-auto/run.sh"
+    "test:auto": "bash test-auto/run.sh",
+    "gui:dev": "pnpm --dir desktop dev",
+    "gui:build": "pnpm --dir desktop build",
+    "gui:start": "pnpm --dir desktop start",
+    "gui:test": "pnpm --dir desktop test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shawncai/nvm.git"
+    "url": "git+https://github.com/shawncai/gui-nvm.git"
   },
   "keywords": [
     "nvm",
@@ -39,9 +43,9 @@
   "author": "Tim Caswell <tim@creationix.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/shawncai/nvm/issues"
+    "url": "https://github.com/shawncai/gui-nvm/issues"
   },
-  "homepage": "https://github.com/shawncai/nvm",
+  "homepage": "https://github.com/shawncai/gui-nvm",
   "devDependencies": {
     "dockerfile_lint": "^0.3.4",
     "doctoc": "^2.2.1",

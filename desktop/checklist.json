@@ -1,0 +1,46 @@
+{
+  "task": "第一稿：雾白项目检查器",
+  "items": [
+    {
+      "task": "确认第一稿与接入方式",
+      "done": true
+    },
+    {
+      "task": "锁定并审查新界面依赖",
+      "done": true
+    },
+    {
+      "task": "实现项目列表、版本配置与版本库",
+      "done": true
+    },
+    {
+      "task": "接入本机扫描、版本读取和配置保存",
+      "done": true
+    },
+    {
+      "task": "后端边界测试与浏览器交互核验",
+      "done": true
+    },
+    {
+      "task": "对照第一稿进行设计 QA",
+      "done": true
+    },
+    {
+      "task": "dot_clean 并关闭测试服务与浏览器",
+      "done": true
+    }
+  ],
+  "validation": {
+    "automatedTests": "15/15 passed",
+    "existingNvmRegression": "passed",
+    "build": "passed",
+    "browser": "passed",
+    "realInstall": "v22.23.3 in isolated NVM_DIR, removed after verification",
+    "servicesStopped": {
+      "4783": true,
+      "4784": true,
+      "4785": true
+    },
+    "browserClosed": true
+  }
+}

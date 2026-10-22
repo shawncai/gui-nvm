@@ -29,3 +29,31 @@ package-lock.json
 yarn.lock
 
 target/
+desktop/dist/
+!desktop/vite.config.mjs
+!desktop/src/Views.jsx
+.playwright-cli/
+
+# Native macOS sources, including Version/Views files excluded by upstream v*.
+!macos/
+!macos/**
+macos/**/xcuserdata/
+macos/**/.DS_Store
+macos/**/._*
+
+# Local design sessions and planning notes are not distribution source.
+/design/
+/prompt/
+/design-qa.md
+/macos/checklist-release.json
+
+# Local credentials and signing material (keep these after source exceptions).
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision

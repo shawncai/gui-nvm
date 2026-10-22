@@ -1,0 +1,42 @@
+{
+  "reviewedAt": "2026-10-21",
+  "scope": "New desktop package only; existing nvm dependencies unchanged",
+  "decision": "accepted",
+  "packageManager": "pnpm@8.15.8",
+  "node": "22.22.3",
+  "exactVersions": {
+    "@tabler/icons-react": "3.49.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "buildVersions": {
+    "@vitejs/plugin-react": "5.0.4",
+    "vite": "6.4.4"
+  },
+  "audit": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "dependencies": 117,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 117
+  },
+  "controls": [
+    "Exact versions and pnpm lockfile integrity",
+    "Installation with --frozen-lockfile --ignore-scripts",
+    "No automatic upgrade or audit --fix",
+    "Tabler icon library: MIT; no custom SVG icon art",
+    "New package initial lock explicitly corrects vulnerable starter build dependencies; no root dependency upgrades"
+  ],
+  "sources": [
+    "https://registry.npmjs.org/@tabler%2ficons-react/3.49.0",
+    "https://registry.npmjs.org/vite/6.4.4",
+    "https://github.com/vitejs/vite/security/advisories",
+    "https://github.com/tabler/tabler-icons/blob/main/LICENSE"
+  ]
+}
