@@ -37,8 +37,8 @@ export async function createApp({ port = 4783, dev = false, demo = false, store 
       if (req.headers['sec-fetch-site'] && !['same-origin', 'none'].includes(req.headers['sec-fetch-site'])) throw new AppError('拒绝跨站请求', 403);
       const url = new URL(req.url, `http://${req.headers.host}`);
       if (url.pathname.startsWith('/api/')) {
-        if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res, 200, { token });
-        if (req.headers['x-gui-nvm-token'] !== token) throw new AppError('会话已失效，请刷新页面', 403);
+        if (req.headers['x-gui-nvm-token'] !== token) return json(res, 403, { code: 'SESSION_REQUIRED', error: '会话缺失或已失效，请重新打开终端中的启动链接' });
+        if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res, 200, { ok: true });
         if (req.method === 'GET') {
           if (url.pathname === '/api/state') return json(res, 200, await store.snapshot());
           if (url.pathname === '/api/directories') return json(res, 200, await store.browse(url.searchParams.get('path')));
@@ -96,13 +96,14 @@ export async function createApp({ port = 4783, dev = false, demo = false, store 
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   actualPort = server.address().port;
   const url = `http://127.0.0.1:${actualPort}`;
-  return { url, server, store, async close() { await store.close(); await vite?.close(); await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); } };
+  const launchURL = `${url}/#token=${token}`;
+  return { url, launchURL, server, store, async close() { await store.close(); await vite?.close(); await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }); } };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const app = await createApp({ port: Number(process.env.GUI_NVM_PORT || 4783), dev: process.argv.includes('--dev'), demo: process.argv.includes('--demo') });
-  console.log(`gui-nvm: ${app.url}${process.argv.includes('--demo') ? ' (演示模式)' : ''}`);
-  if (process.argv.includes('--open') && process.platform === 'darwin') spawn('/usr/bin/open', [app.url], { stdio: 'ignore' });
+  console.log(`gui-nvm: ${app.launchURL}${process.argv.includes('--demo') ? ' (演示模式)' : ''}`);
+  if (process.argv.includes('--open') && process.platform === 'darwin') spawn('/usr/bin/open', [app.launchURL], { stdio: 'ignore' });
   let closing = false;
   const close = async () => { if (closing) return; closing = true; await app.close(); process.exit(0); };
   process.on('SIGTERM', close);

@@ -17,3 +17,9 @@ EXPECTED_OUTPUT='an alias target version is required'
 
 [ "_$OUTPUT" = "_$EXPECTED_OUTPUT" ] || die "\`nvm_make_alias foo\` did not error with '$EXPECTED_OUTPUT'; got '$OUTPUT'"
 [ "$EXIT_CODE" -eq 2 ] || die "\`nvm_make_alias foo\` did not exit with 2, got '$EXIT_CODE'"
+
+for INVALID in ../outside lts/../../outside lts/.. . .. /absolute 'nested/name' 'lts/name/child'; do
+  if nvm_make_alias "${INVALID}" v22.0.0 >/dev/null 2>&1; then
+    die "unsafe alias accepted: ${INVALID}"
+  fi
+done

@@ -116,49 +116,69 @@ nvm_get_latest() {
 }
 
 nvm_download() {
+  local NVM_AUTH_HEADER_VALUE
+  NVM_AUTH_HEADER_VALUE=''
+  if [ -n "${NVM_AUTH_HEADER:-}" ]; then
+    NVM_AUTH_HEADER_VALUE="$(nvm_sanitize_auth_header "${NVM_AUTH_HEADER}")" || return 2
+  fi
+
   if nvm_has "curl"; then
-    local CURL_COMPRESSED_FLAG=""
-    local CURL_HEADER_FLAG=""
-
-    if [ -n "${NVM_AUTH_HEADER:-}" ]; then
-      sanitized_header=$(nvm_sanitize_auth_header "${NVM_AUTH_HEADER}")
-      CURL_HEADER_FLAG="--header \"Authorization: ${sanitized_header}\""
+    if [ -n "${NVM_AUTH_HEADER_VALUE}" ]; then
+      set -- --header "Authorization: ${NVM_AUTH_HEADER_VALUE}" "$@"
     fi
-
     if nvm_curl_use_compression; then
-      CURL_COMPRESSED_FLAG="--compressed"
+      set -- --compressed "$@"
     fi
-    local NVM_DOWNLOAD_ARGS
-    NVM_DOWNLOAD_ARGS=''
-    for arg in "$@"; do
-      NVM_DOWNLOAD_ARGS="${NVM_DOWNLOAD_ARGS} \"$arg\""
-    done
-    eval "curl -q --fail ${CURL_COMPRESSED_FLAG:-} ${CURL_HEADER_FLAG:-} ${NVM_DOWNLOAD_ARGS}"
+    curl -q --fail "$@"
   elif nvm_has "wget"; then
-    # Emulate curl with wget
-    ARGS=$(nvm_echo "$@" | command sed "
-      s/--progress-bar /--progress=bar /
-      s/--compressed //
-      s/--fail //
-      s/-L //
-      s/-I /--server-response /
-      s/-s /-q /
-      s/-sS /-nv /
-      s/-o /-O /
-      s/-C - /-c /
-    ")
-
-    if [ -n "${NVM_AUTH_HEADER:-}" ]; then
-      ARGS="${ARGS} --header \"${NVM_AUTH_HEADER}\""
+    # Rotate the original arguments through "$@" without flattening or evaluating them.
+    local NVM_WGET_ARG
+    local NVM_WGET_VALUE
+    NVM_WGET_VALUE=''
+    for NVM_WGET_ARG in "$@"; do
+      shift
+      case "${NVM_WGET_VALUE}" in
+        literal) set -- "$@" "${NVM_WGET_ARG}"; continue ;;
+        output) set -- "$@" "${NVM_WGET_ARG}"; NVM_WGET_VALUE=''; continue ;;
+        continue)
+          [ "${NVM_WGET_ARG}" = '-' ] || return 2
+          NVM_WGET_VALUE=''
+          continue
+        ;;
+      esac
+      case "${NVM_WGET_ARG}" in
+        --progress-bar) set -- "$@" --progress=bar ;;
+        --compressed | --fail | -L) ;;
+        -I) set -- "$@" --server-response ;;
+        -s) set -- "$@" -q ;;
+        -sS) set -- "$@" -nv ;;
+        -o) set -- "$@" -O; NVM_WGET_VALUE=output ;;
+        -C) set -- "$@" -c; NVM_WGET_VALUE=continue ;;
+        --) set -- "$@" --; NVM_WGET_VALUE=literal ;;
+        *) set -- "$@" "${NVM_WGET_ARG}" ;;
+      esac
+    done
+    case "${NVM_WGET_VALUE}" in output | continue) return 2 ;; esac
+    if [ -n "${NVM_AUTH_HEADER_VALUE}" ]; then
+      set -- --header "Authorization: ${NVM_AUTH_HEADER_VALUE}" "$@"
     fi
-    # shellcheck disable=SC2086
-    eval wget $ARGS
+    wget "$@"
+  else
+    nvm_err 'nvm needs curl or wget to proceed.'
+    return 1
   fi
 }
 
 nvm_sanitize_auth_header() {
-    # Remove potentially dangerous characters
-    nvm_echo "$1" | command sed 's/[^a-zA-Z0-9:;_. -]//g'
+  # Keep credentials intact, but never allow additional HTTP header lines.
+  case "${1-}" in
+    *'
+'* | *"$(command printf '\r')"*)
+      nvm_err 'NVM_AUTH_HEADER must contain a single header value.'
+      return 2
+    ;;
+  esac
+  nvm_echo "${1-}"
 }
 
 nvm_has_system_node() {
@@ -896,20 +916,26 @@ nvm_normalize_lts() {
   LTS="${1-}"
 
   case "${LTS}" in
-    lts/-[123456789] | lts/-[123456789][0123456789]*)
+    lts/-*)
       local N
-      N="$(echo "${LTS}" | cut -d '-' -f 2)"
-      N=$((N+1))
-      # shellcheck disable=SC2181
-      if [ $? -ne 0 ]; then
-        nvm_echo "${LTS}"
-        return 0
+      N="${LTS#lts/-}"
+      case "${N}" in
+        '' | 0* | *[!0123456789]*)
+          nvm_err 'LTS offsets must be positive decimal integers.'
+          return 2
+        ;;
+      esac
+      # Bound the value before shell arithmetic, including on 32-bit shells.
+      if [ "${#N}" -gt 9 ]; then
+        nvm_err 'That many LTS releases do not exist yet.'
+        return 2
       fi
+      N=$((N + 1))
       local NVM_ALIAS_DIR
       NVM_ALIAS_DIR="$(nvm_alias_path)"
       local RESULT
       RESULT="$(command ls "${NVM_ALIAS_DIR}/lts" | command tail -n "${N}" | command head -n 1)"
-      if [ "${RESULT}" != '*' ]; then
+      if [ -n "${RESULT}" ] && [ "${RESULT}" != '*' ]; then
         nvm_echo "lts/${RESULT}"
       else
         nvm_err 'That many LTS releases do not exist yet.'
@@ -1216,7 +1242,46 @@ nvm_make_alias() {
     nvm_err "an alias target version is required"
     return 2
   fi
-  nvm_echo "${VERSION}" | tee "$(nvm_alias_path)/${ALIAS}" >/dev/null
+  local ALIAS_NAME
+  ALIAS_NAME="${ALIAS}"
+  case "${ALIAS}" in
+    'lts/*') ALIAS_NAME='*' ;;
+    lts/*) ALIAS_NAME="${ALIAS#lts/}" ;;
+  esac
+  case "${ALIAS_NAME}" in
+    '') nvm_err 'an alias name is required'; return 1 ;;
+    '*')
+      [ "${ALIAS}" = 'lts/*' ] || return 1
+    ;;
+    . | .. | -* | *[!a-zA-Z0-9_.-]*)
+      nvm_err 'Alias names must be a single safe path component.'
+      return 1
+    ;;
+  esac
+  local ALIAS_DIR
+  ALIAS_DIR="$(nvm_alias_path)"
+  if [ -L "${ALIAS_DIR}" ] || { [ -e "${ALIAS_DIR}" ] && ! [ -d "${ALIAS_DIR}" ]; }; then
+    nvm_err 'Alias directory must not be a symbolic link or non-directory.'
+    return 1
+  fi
+  command mkdir -p "${ALIAS_DIR}" || return 1
+  case "${ALIAS}" in
+    lts/*)
+      ALIAS_DIR="${ALIAS_DIR}/lts"
+      if [ -L "${ALIAS_DIR}" ] || { [ -e "${ALIAS_DIR}" ] && ! [ -d "${ALIAS_DIR}" ]; }; then
+        nvm_err 'LTS alias directory must not be a symbolic link or non-directory.'
+        return 1
+      fi
+      command mkdir -p "${ALIAS_DIR}" || return 1
+    ;;
+  esac
+  local ALIAS_PATH
+  ALIAS_PATH="${ALIAS_DIR}/${ALIAS_NAME}"
+  if [ -L "${ALIAS_PATH}" ] || { [ -e "${ALIAS_PATH}" ] && ! [ -f "${ALIAS_PATH}" ]; }; then
+    nvm_err 'Alias destination must be a regular file, not a symbolic link.'
+    return 1
+  fi
+  nvm_echo "${VERSION}" > "${ALIAS_PATH}"
 }
 
 nvm_list_aliases() {
@@ -1227,7 +1292,11 @@ nvm_list_aliases() {
   NVM_CURRENT="$(nvm_ls_current)"
   local NVM_ALIAS_DIR
   NVM_ALIAS_DIR="$(nvm_alias_path)"
-  command mkdir -p "${NVM_ALIAS_DIR}/lts"
+  if [ -L "${NVM_ALIAS_DIR}" ] || [ -L "${NVM_ALIAS_DIR}/lts" ]; then
+    nvm_err 'Alias directories must not be symbolic links.'
+    return 1
+  fi
+  command mkdir -p "${NVM_ALIAS_DIR}/lts" || return 1
 
   if [ "${ALIAS}" != "${ALIAS#lts/}" ]; then
     nvm_alias "${ALIAS}"
@@ -1654,15 +1723,17 @@ nvm_ls_remote_index_tab() {
 
   nvm_is_zsh && setopt local_options shwordsplit
   local VERSION_LIST
-  VERSION_LIST="$(nvm_download -L -s "${MIRROR}/index.tab" -o - \
-    | command sed "
-        1d;
-        s/^/${PREFIX}/;
-      " \
-  )"
+  VERSION_LIST="$(nvm_download -L -s "${MIRROR}/index.tab" -o -)" || return 3
+  # Remote metadata is data: accept release versions and the existing nightly
+  # format only, and never derive alias paths from unchecked LTS names.
+  VERSION_LIST="$(nvm_echo "${VERSION_LIST}" | LC_ALL=C command awk -v prefix="${PREFIX}" '
+    NR == 1 { next }
+    $1 !~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ && $1 !~ /^v[0-9]+\.[0-9]+\.[0-9]+-nightly[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9a-f]+$/ { next }
+    $10 != "" && $10 != "-" && $10 !~ /^[a-zA-Z]+$/ { next }
+    { print prefix $0 }
+  ')" || return 3
   local LTS_ALIAS
   local LTS_VERSION
-  command mkdir -p "$(nvm_alias_path)/lts"
   { command awk '{
         if ($10 ~ /^\-?$/) { next }
         if ($10 && !a[tolower($10)]++) {
@@ -1772,31 +1843,38 @@ nvm_compute_checksum() {
     return 1
   fi
 
+  local NVM_CHECKSUM_OUTPUT
+  local NVM_CHECKSUM_FIELD
+  NVM_CHECKSUM_FIELD=1
   if nvm_has_non_aliased "sha256sum"; then
     nvm_err 'Computing checksum with sha256sum'
-    command sha256sum "${FILE}" | command awk '{print $1}'
+    NVM_CHECKSUM_OUTPUT="$(command sha256sum "${FILE}")" || return 1
   elif nvm_has_non_aliased "shasum"; then
     nvm_err 'Computing checksum with shasum -a 256'
-    command shasum -a 256 "${FILE}" | command awk '{print $1}'
+    NVM_CHECKSUM_OUTPUT="$(command shasum -a 256 "${FILE}")" || return 1
   elif nvm_has_non_aliased "sha256"; then
     nvm_err 'Computing checksum with sha256 -q'
-    command sha256 -q "${FILE}" | command awk '{print $1}'
+    NVM_CHECKSUM_OUTPUT="$(command sha256 -q "${FILE}")" || return 1
   elif nvm_has_non_aliased "gsha256sum"; then
     nvm_err 'Computing checksum with gsha256sum'
-    command gsha256sum "${FILE}" | command awk '{print $1}'
+    NVM_CHECKSUM_OUTPUT="$(command gsha256sum "${FILE}")" || return 1
   elif nvm_has_non_aliased "openssl"; then
     nvm_err 'Computing checksum with openssl dgst -sha256'
-    command openssl dgst -sha256 "${FILE}" | command awk '{print $NF}'
+    NVM_CHECKSUM_OUTPUT="$(command openssl dgst -sha256 "${FILE}")" || return 1
+    NVM_CHECKSUM_FIELD=NF
   elif nvm_has_non_aliased "bssl"; then
     nvm_err 'Computing checksum with bssl sha256sum'
-    command bssl sha256sum "${FILE}" | command awk '{print $1}'
+    NVM_CHECKSUM_OUTPUT="$(command bssl sha256sum "${FILE}")" || return 1
   elif nvm_has_non_aliased "sha1sum"; then
     nvm_err 'Computing checksum with sha1sum'
-    command sha1sum "${FILE}" | command awk '{print $1}'
+    NVM_CHECKSUM_OUTPUT="$(command sha1sum "${FILE}")" || return 1
   elif nvm_has_non_aliased "sha1"; then
     nvm_err 'Computing checksum with sha1 -q'
-    command sha1 -q "${FILE}"
+    NVM_CHECKSUM_OUTPUT="$(command sha1 -q "${FILE}")" || return 1
+  else
+    return 1
   fi
+  nvm_echo "${NVM_CHECKSUM_OUTPUT}" | command awk -v field="${NVM_CHECKSUM_FIELD}" '{ print (field == "NF" ? $NF : $1) }'
 }
 
 nvm_compare_checksum() {
@@ -1811,7 +1889,10 @@ nvm_compare_checksum() {
   fi
 
   local COMPUTED_SUM
-  COMPUTED_SUM="$(nvm_compute_checksum "${FILE}")"
+  COMPUTED_SUM="$(nvm_compute_checksum "${FILE}")" || {
+    nvm_err "Failed to compute checksum of '${FILE}'."
+    return 1
+  }
 
   local CHECKSUM
   CHECKSUM="${2-}"
@@ -1822,8 +1903,8 @@ nvm_compare_checksum() {
 
   if [ -z "${COMPUTED_SUM}" ]; then
     nvm_err "Computed checksum of '${FILE}' is empty." # missing in raspberry pi binary
-    nvm_err 'WARNING: Continuing *without checksum verification*'
-    return
+    nvm_err 'Checksum verification failed.'
+    return 1
   elif [ "${COMPUTED_SUM}" != "${CHECKSUM}" ] && [ "${COMPUTED_SUM}" != "\\${CHECKSUM}" ]; then
     nvm_err "Checksums do not match: '${COMPUTED_SUM}' found, '${CHECKSUM}' expected."
     return 1
@@ -1849,13 +1930,17 @@ nvm_get_checksum() {
   fi
 
   local SHASUMS_URL
-  if [ "$(nvm_get_checksum_alg)" = 'sha-256' ]; then
+  local CHECKSUM_ALG
+  CHECKSUM_ALG="$(nvm_get_checksum_alg)" || return 1
+  if [ "${CHECKSUM_ALG}" = 'sha-256' ]; then
     SHASUMS_URL="${MIRROR}/${3}/SHASUMS256.txt"
   else
     SHASUMS_URL="${MIRROR}/${3}/SHASUMS.txt"
   fi
 
-  nvm_download -L -s "${SHASUMS_URL}" -o - | command awk "{ if (\"${4}.${5}\" == \$2) print \$1}"
+  local CHECKSUM_CONTENT
+  CHECKSUM_CONTENT="$(nvm_download -L -s "${SHASUMS_URL}" -o -)" || return 1
+  nvm_echo "${CHECKSUM_CONTENT}" | command awk -v file="${4}.${5}" '$2 == file { print $1 }'
 }
 
 nvm_print_versions() {
@@ -2184,17 +2269,14 @@ nvm_get_mirror() {
     ;;
   esac
 
-  case "${NVM_MIRROR}" in
-    *\`* | *\\* | *\'* | *\(* | *' '* )
-      nvm_err '$NVM_NODEJS_ORG_MIRROR and $NVM_IOJS_ORG_MIRROR may only contain a URL'
-      return 2
-    ;;
-  esac
-
-
-  if ! nvm_echo "${NVM_MIRROR}" | command awk '{ $0 ~ "^https?://[a-zA-Z0-9./_-]+$" }'; then
-      nvm_err '$NVM_NODEJS_ORG_MIRROR and $NVM_IOJS_ORG_MIRROR may only contain a URL'
-      return 2
+  # A mirror is an HTTP(S) origin with an optional port and URL path.
+  # Validate the whole value, including line count; do not treat it as shell text.
+  if ! nvm_echo "${NVM_MIRROR}" | LC_ALL=C command awk '
+    NR == 1 && /^https?:\/\/([a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?|\[[a-fA-F0-9:.]+\])(:[0-9]+)?(\/[a-zA-Z0-9._~%+,:@=\/-]*)?$/ { valid = 1 }
+    END { exit !(NR == 1 && valid) }
+  '; then
+    nvm_err '$NVM_NODEJS_ORG_MIRROR and $NVM_IOJS_ORG_MIRROR may only contain an HTTP(S) URL'
+    return 2
   fi
 
   nvm_echo "${NVM_MIRROR}"
@@ -2230,7 +2312,7 @@ nvm_install_binary_extract() {
     command unzip -q "${TARBALL}" -d "${TMPDIR}" || return 1
   # For non Windows system (including WSL running on Windows)
   else
-    nvm_extract_tarball "${NVM_OS}" "${VERSION}" "${TARBALL}" "${TMPDIR}"
+    nvm_extract_tarball "${NVM_OS}" "${VERSION}" "${TARBALL}" "${TMPDIR}" || return 1
   fi
 
   command mkdir -p "${VERSION_PATH}" || return 1
@@ -2300,7 +2382,7 @@ nvm_install_binary() {
     PROGRESS_BAR="--progress-bar"
   fi
   nvm_echo "Downloading and installing ${NODE_OR_IOJS-} ${VERSION}..."
-  TARBALL="$(PROGRESS_BAR="${PROGRESS_BAR}" nvm_download_artifact "${FLAVOR}" binary "${TYPE-}" "${VERSION}" | command tail -1)"
+  TARBALL="$(PROGRESS_BAR="${PROGRESS_BAR}" nvm_download_artifact "${FLAVOR}" binary "${TYPE-}" "${VERSION}")" || return 1
   if [ -f "${TARBALL}" ]; then
     TMPDIR="$(dirname "${TARBALL}")/files"
   fi
@@ -2316,7 +2398,7 @@ nvm_install_binary() {
   # Read nosource from arguments
   if [ "${nosource-}" = '1' ]; then
     nvm_err 'Binary download failed. Download from source aborted.'
-    return 0
+    return 1
   fi
 
   nvm_err 'Binary download failed, trying source.'
@@ -2435,7 +2517,7 @@ nvm_download_artifact() {
 
   if [ "${KIND}" = 'binary' ] && ! nvm_binary_available "${VERSION}"; then
     nvm_err "No precompiled binary available for ${VERSION}."
-    return
+    return 3
   fi
 
   local SLUG
@@ -2445,7 +2527,11 @@ nvm_download_artifact() {
   COMPRESSION="$(nvm_get_artifact_compression "${VERSION}")"
 
   local CHECKSUM
-  CHECKSUM="$(nvm_get_checksum "${FLAVOR}" "${TYPE}" "${VERSION}" "${SLUG}" "${COMPRESSION}")"
+  CHECKSUM="$(nvm_get_checksum "${FLAVOR}" "${TYPE}" "${VERSION}" "${SLUG}" "${COMPRESSION}")" || return 3
+  if [ -z "${CHECKSUM}" ]; then
+    nvm_err 'Provided checksum to compare to is empty.'
+    return 3
+  fi
 
   local tmpdir
   if [ "${KIND}" = 'binary' ]; then
@@ -2453,10 +2539,10 @@ nvm_download_artifact() {
   else
     tmpdir="$(nvm_cache_dir)/src/${SLUG}"
   fi
-  command mkdir -p "${tmpdir}/files" || (
+  command mkdir -p "${tmpdir}/files" || {
     nvm_err "creating directory ${tmpdir}/files failed"
     return 3
-  )
+  }
 
   local TARBALL
   TARBALL="${tmpdir}/${SLUG}.${COMPRESSION}"
@@ -2481,11 +2567,11 @@ nvm_download_artifact() {
     command rm -rf "${TARBALL}"
   fi
   nvm_err "Downloading ${TARBALL_URL}..."
-  nvm_download -L -C - "${PROGRESS_BAR}" "${TARBALL_URL}" -o "${TARBALL}" || (
+  nvm_download -L -C - "${PROGRESS_BAR}" "${TARBALL_URL}" -o "${TARBALL}" || {
     command rm -rf "${TARBALL}" "${tmpdir}"
     nvm_err "download from ${TARBALL_URL} failed"
     return 4
-  )
+  }
 
   if nvm_grep '404 Not Found' "${TARBALL}" >/dev/null; then
     command rm -rf "${TARBALL}" "${tmpdir}"
@@ -2493,10 +2579,10 @@ nvm_download_artifact() {
     return 5
   fi
 
-  nvm_compare_checksum "${TARBALL}" "${CHECKSUM}" || (
-    command rm -rf "${tmpdir}/files"
+  nvm_compare_checksum "${TARBALL}" "${CHECKSUM}" || {
+    command rm -rf "${TARBALL}" "${tmpdir}/files"
     return 6
-  )
+  }
 
   nvm_echo "${TARBALL}"
 }
@@ -2667,8 +2753,9 @@ nvm_install_source() {
 
   nvm_is_zsh && setopt local_options shwordsplit
 
-  TARBALL="$(PROGRESS_BAR="${PROGRESS_BAR}" nvm_download_artifact "${FLAVOR}" source "${TYPE}" "${VERSION}" | command tail -1)" && \
-  [ -f "${TARBALL}" ] && \
+  TARBALL="$(PROGRESS_BAR="${PROGRESS_BAR}" nvm_download_artifact "${FLAVOR}" source "${TYPE}" "${VERSION}")" || return 1
+
+  [ -f "${TARBALL}" ] || return 1
   TMPDIR="$(dirname "${TARBALL}")/files" && \
   if ! (
     # shellcheck disable=SC2086
@@ -4251,8 +4338,6 @@ nvm() {
       local NVM_CURRENT
       NVM_CURRENT="$(nvm_ls_current)"
 
-      command mkdir -p "${NVM_ALIAS_DIR}/lts"
-
       local ALIAS
       local TARGET
       local NVM_NO_COLORS
@@ -4296,7 +4381,7 @@ nvm() {
         if [ "${VERSION}" = 'N/A' ]; then
           nvm_err "! WARNING: Version '${TARGET}' does not exist."
         fi
-        nvm_make_alias "${ALIAS}" "${TARGET}"
+        nvm_make_alias "${ALIAS}" "${TARGET}" || return $?
         NVM_NO_COLORS="${NVM_NO_COLORS-}" NVM_CURRENT="${NVM_CURRENT-}" DEFAULT=false nvm_print_formatted_alias "${ALIAS}" "${TARGET}" "${VERSION}"
       else
         if [ "${ALIAS-}" = '--' ]; then
@@ -4309,7 +4394,10 @@ nvm() {
     "unalias")
       local NVM_ALIAS_DIR
       NVM_ALIAS_DIR="$(nvm_alias_path)"
-      command mkdir -p "${NVM_ALIAS_DIR}"
+      if [ -L "${NVM_ALIAS_DIR}" ]; then
+        nvm_err 'Alias directory must not be a symbolic link.'
+        return 1
+      fi
       if [ $# -ne 1 ]; then
         >&2 nvm --help
         return 127

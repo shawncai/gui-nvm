@@ -52,3 +52,12 @@ printf '%s\n' "${LTS_LIST}" | while IFS= read -r LTS; do
     INDEX=$(($INDEX + 1))
 done
 
+
+# Reject invalid offsets before they reach shell arithmetic.
+for INVALID in lts/-0 lts/-01 lts/-1+1 lts/-name lts/-10x lts/-999999999999999999999999999; do
+  if nvm_normalize_lts "${INVALID}" >/dev/null 2>&1; then
+    die "invalid LTS offset accepted: ${INVALID}"
+  fi
+done
+
+cleanup

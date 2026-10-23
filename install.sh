@@ -106,20 +106,40 @@ nvm_node_version() {
 
 nvm_download() {
   if nvm_has "curl"; then
-    curl --fail --compressed -q "$@"
+    curl -q --fail --compressed "$@"
   elif nvm_has "wget"; then
-    # Emulate curl with wget
-    ARGS=$(nvm_echo "$@" | command sed -e 's/--progress-bar /--progress=bar /' \
-                            -e 's/--compressed //' \
-                            -e 's/--fail //' \
-                            -e 's/-L //' \
-                            -e 's/-I /--server-response /' \
-                            -e 's/-s /-q /' \
-                            -e 's/-sS /-nv /' \
-                            -e 's/-o /-O /' \
-                            -e 's/-C - /-c /')
-    # shellcheck disable=SC2086
-    eval wget $ARGS
+    # Preserve argument boundaries while translating the curl options we use.
+    local NVM_WGET_ARG
+    local NVM_WGET_VALUE
+    NVM_WGET_VALUE=''
+    for NVM_WGET_ARG in "$@"; do
+      shift
+      case "${NVM_WGET_VALUE}" in
+        literal) set -- "$@" "${NVM_WGET_ARG}"; continue ;;
+        output) set -- "$@" "${NVM_WGET_ARG}"; NVM_WGET_VALUE=''; continue ;;
+        continue)
+          [ "${NVM_WGET_ARG}" = '-' ] || return 2
+          NVM_WGET_VALUE=''
+          continue
+        ;;
+      esac
+      case "${NVM_WGET_ARG}" in
+        --progress-bar) set -- "$@" --progress=bar ;;
+        --compressed | --fail | -L) ;;
+        -I) set -- "$@" --server-response ;;
+        -s) set -- "$@" -q ;;
+        -sS) set -- "$@" -nv ;;
+        -o) set -- "$@" -O; NVM_WGET_VALUE=output ;;
+        -C) set -- "$@" -c; NVM_WGET_VALUE=continue ;;
+        --) set -- "$@" --; NVM_WGET_VALUE=literal ;;
+        *) set -- "$@" "${NVM_WGET_ARG}" ;;
+      esac
+    done
+    case "${NVM_WGET_VALUE}" in output | continue) return 2 ;; esac
+    wget "$@"
+  else
+    nvm_echo >&2 'nvm needs curl or wget to proceed.'
+    return 1
   fi
 }
 

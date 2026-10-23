@@ -45,3 +45,13 @@ testMirrors '`do something bad`'
 testMirrors 'https://nodejs.org/dist; xdg-open http://www.google.com;'
 testMirrors 'https://nodejs.org/dist&&xdg-open http://www.google.com;'
 testMirrors 'https://nodejs.org/dist|xdg-open http://www.google.com;'
+
+for MIRROR in 'http://localhost:8080/dist' 'https://mirror.example:8443/node/dist/' 'https://[::1]:8443/dist' 'https://mirror.example/node%20releases'; do
+  NVM_NODEJS_ORG_MIRROR="${MIRROR}"
+  [ "$(nvm_get_mirror node std)" = "${MIRROR}" ] || die "valid mirror rejected: ${MIRROR}"
+done
+for MIRROR in 'file:///tmp/dist' 'https://host;invalid' 'https://host"invalid' 'https://host/path?query=value' 'https://'; do
+  testMirrors "${MIRROR}"
+done
+testMirrors 'https://example.test/dist
+https://other.example.test/dist'

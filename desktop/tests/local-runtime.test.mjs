@@ -155,11 +155,12 @@ test('HTTP API blocks foreign origins, untrusted hosts, missing sessions and uns
   await store.init({ sync: false }); await store.scanning;
   const app = await createApp({ port: 0, store, initialize: false });
   t.after(() => app.close());
-  assert.equal((await fetch(app.url + '/api/bootstrap', { headers: { Origin: 'https://evil.invalid' } })).status, 403);
-  const foreignHostStatus = await new Promise((resolve, reject) => { http.get(app.url + '/api/bootstrap', { headers: { Host: 'evil.invalid' } }, response => { response.resume(); resolve(response.statusCode); }).on('error', reject); });
+  const token = new URLSearchParams(new URL(app.launchURL).hash.slice(1)).get('token');
+  assert.equal((await fetch(app.url + '/api/bootstrap', { headers: { Origin: 'https://evil.invalid', 'X-Gui-Nvm-Token': token } })).status, 403);
+  const foreignHostStatus = await new Promise((resolve, reject) => { http.get(app.url + '/api/bootstrap', { headers: { Host: 'evil.invalid', 'X-Gui-Nvm-Token': token } }, response => { response.resume(); resolve(response.statusCode); }).on('error', reject); });
   assert.equal(foreignHostStatus, 403);
+  assert.equal((await fetch(app.url + '/api/bootstrap', { headers: { 'Sec-Fetch-Site': 'cross-site', 'X-Gui-Nvm-Token': token } })).status, 403);
   assert.equal((await fetch(app.url + '/api/state')).status, 403);
-  const { token } = await (await fetch(app.url + '/api/bootstrap')).json();
   const headers = { Origin: app.url, 'X-Gui-Nvm-Token': token, 'Content-Type': 'application/json' };
   const state = await (await fetch(app.url + '/api/state', { headers })).json();
   assert.equal(state.projects.length, 1);
@@ -174,4 +175,44 @@ test('HTTP API blocks foreign origins, untrusted hosts, missing sessions and uns
   assert.equal((await post('config/save', { ...payload, expected: preview.expected })).status, 409);
   assert.equal((await post('config/preview', { ...payload, requested: 'x'.repeat(70000) })).status, 413);
   assert.equal((await fetch(app.url + '/__open-in-editor?file=/etc/passwd')).status, 404);
+});
+
+test('only the launch capability can bootstrap or access the demo API', async t => {
+  const app = await createApp({ port: 0, demo: true });
+  t.after(() => app.close());
+  const launch = new URL(app.launchURL);
+  const token = new URLSearchParams(launch.hash.slice(1)).get('token');
+  assert.match(token, /^[a-f0-9]{64}$/);
+  assert.equal(launch.origin, app.url);
+  assert.equal(launch.pathname, '/');
+  assert.equal(launch.search, '');
+  assert.equal(new URL(app.url).hash, '');
+  assert.equal(app.server.address().address, '127.0.0.1');
+  for (const route of ['bootstrap', 'state', 'directories']) {
+    for (const headers of [{}, { 'X-Gui-Nvm-Token': token + '0' }]) {
+      const response = await fetch(app.url + '/api/' + route, { headers });
+      assert.equal(response.status, 403);
+      const denied = await response.json();
+      assert.equal(denied.code, 'SESSION_REQUIRED');
+      assert.match(denied.error, /重新打开终端中的启动链接/);
+      assert.equal(Object.hasOwn(denied, 'token'), false);
+      assert.equal(JSON.stringify(denied).includes(token), false);
+    }
+  }
+  const headers = { 'X-Gui-Nvm-Token': token };
+  const bootstrap = await fetch(app.url + '/api/bootstrap', { headers });
+  assert.equal(bootstrap.status, 200);
+  assert.equal(bootstrap.headers.get('cache-control'), 'no-store');
+  assert.equal(bootstrap.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(bootstrap.headers.get('x-frame-options'), 'DENY');
+  assert.match(bootstrap.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.deepEqual(await bootstrap.json(), { ok: true });
+  const state = await fetch(app.url + '/api/state', { headers });
+  assert.equal(state.status, 200);
+  assert.equal((await state.json()).mode, 'demo');
+  const missingSession = await fetch(app.url + '/api/scan', { method: 'POST', headers: { Origin: app.url, 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(missingSession.status, 403);
+  const scan = await fetch(app.url + '/api/scan', { method: 'POST', headers: { ...headers, Origin: app.url, 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(scan.status, 200);
+  assert.deepEqual(await scan.json(), { ok: true });
 });

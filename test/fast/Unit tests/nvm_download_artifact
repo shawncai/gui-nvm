@@ -48,7 +48,7 @@ VERSION=0.8.5
 ACTUAL="$(nvm_download_artifact node binary std ${VERSION} 2>&1)"
 CODE="$(nvm_download_artifact node binary std ${VERSION} >/dev/null 2>&1 ; echo $?)"
 EXPECTED="No precompiled binary available for ${VERSION}."
-EXPECTED_CODE=0
+EXPECTED_CODE=3
 
 [ "${ACTUAL}" = "${EXPECTED}" ] || die "expected >${EXPECTED}<, got >${ACTUAL}<"
 [ "${CODE}" = $EXPECTED_CODE ] || die "expected exit code ${EXPECTED_CODE}, got ${CODE}"
