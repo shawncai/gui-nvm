@@ -4,12 +4,15 @@ import Darwin
 public actor RuntimeService {
     public typealias Fetcher = @Sendable () async throws -> Data
     public typealias Installer = @Sendable (_ version: String, _ staging: URL, _ log: @escaping @Sendable (String) -> Void) async throws -> Void
+    public typealias PackageExecutor = @Sendable (_ command: GlobalPackageCommand, _ log: @escaping @Sendable (String) -> Void) async throws -> ProcessResult
     private struct Schedule: Decodable { var end: String; var lts: String?; var maintenance: String?; var codename: String? }
     private let resourceURL: URL
     private let dataDir: URL
     private var nvmDir: String
     private let fetcher: Fetcher
     private let installer: Installer?
+    private let packageExecutor: PackageExecutor?
+    private let semver: Semver
     private let schedule: [String: Schedule]
     private var catalog: [NodeRelease] = []
     private var catalogAt: String?
@@ -18,14 +21,21 @@ public actor RuntimeService {
     private var activeID: String?
     private var active: Task<Void, Never>?
     private var syncOperation: Task<Void, Never>?
+    private var globalPackages = GlobalPackageSnapshot()
+    private var packageVersions: Set<String>?
+    private var packageScanID: UUID?
+    private var packageScans: [UUID: Task<GlobalPackageSnapshot, Never>] = [:]
     private var closed = false
 
     public init(resourceURL: URL, dataDir: URL, nvmDir: String,
-                fetcher: @escaping Fetcher = { try await Network.fetchIndex() }, installer: Installer? = nil) throws {
+                fetcher: @escaping Fetcher = { try await Network.fetchIndex() }, installer: Installer? = nil,
+                packageExecutor: PackageExecutor? = nil) throws {
         self.resourceURL = resourceURL
         self.dataDir = URL(fileURLWithPath: try Self.normalizedDirectory(dataDir.path))
         self.nvmDir = try Self.normalizedDirectory(nvmDir)
         self.fetcher = fetcher; self.installer = installer
+        self.packageExecutor = packageExecutor
+        self.semver = try Semver(resourceURL: resourceURL.appendingPathComponent("node-semver"))
         guard let text = try SafeFile.read(resourceURL.appendingPathComponent("release-schedule.json").path) else { throw AppError("缺少 Node 支持周期资源") }
         self.schedule = try JSONDecoder().decode([String: Schedule].self, from: Data(text.utf8))
     }
@@ -101,6 +111,7 @@ public actor RuntimeService {
     public func snapshot() throws -> RuntimeSnapshot {
         let installed = try installedVersions()
         let versions = Set(installed.map(\.version))
+        if !closed, activeID == nil, packageVersions != versions { _ = startPackageScan(versions: installed.map(\.version)) }
         var result = RuntimeSnapshot()
         result.installed = installed
         result.releases = catalog.map {
@@ -113,7 +124,136 @@ public actor RuntimeService {
         result.defaultVersion = DefaultVersion(value: text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", expected: SafeFile.digest(text))
         result.tasks = tasks; result.catalogAt = catalogAt; result.catalogError = catalogError
         result.syncing = syncOperation != nil
+        result.globalPackages = globalPackages
         return result
+    }
+
+    public func refreshGlobalPackages() async {
+        guard !closed, activeID == nil else { return }
+        if let id = packageScanID, let operation = packageScans[id] {
+            finishPackageScan(await operation.value, id: id)
+            return
+        }
+        await refreshPackageCacheAfterOperation()
+    }
+
+    private func startPackageScan(versions: [String]) -> (UUID, Task<GlobalPackageSnapshot, Never>) {
+        if let previous = packageScanID { packageScans[previous]?.cancel() }
+        let id = UUID(), directory = nvmDir, semver = self.semver
+        packageVersions = Set(versions)
+        globalPackages.scanning = true
+        let operation = Task.detached(priority: .utility) { GlobalPackages.scan(nvmDir: directory, versions: versions, semver: semver) }
+        packageScanID = id; packageScans[id] = operation
+        Task { [weak self] in
+            let result = await operation.value
+            await self?.finishPackageScan(result, id: id)
+        }
+        return (id, operation)
+    }
+
+    private func finishPackageScan(_ result: GlobalPackageSnapshot, id: UUID) {
+        packageScans[id] = nil
+        guard !closed, packageScanID == id else { return }
+        globalPackages = result; globalPackages.scanning = false; packageScanID = nil
+    }
+
+    private func refreshPackageCacheAfterOperation() async {
+        guard !closed else { return }
+        do {
+            let (id, operation) = startPackageScan(versions: try installedVersions().map(\.version))
+            finishPackageScan(await operation.value, id: id)
+        } catch {
+            globalPackages.errors = [ScanIssue(path: nvmDir, code: error.localizedDescription)]
+            globalPackages.scanning = false
+        }
+    }
+
+    public func previewGlobalPackageChange(packageID: String, action: GlobalPackageAction,
+                                           targetVersion: String? = nil, allowScripts: Bool = false) async throws -> GlobalPackagePreview {
+        guard !closed else { throw AppError("应用正在关闭") }
+        guard activeID == nil else { throw AppError("已有任务正在运行") }
+        guard let cached = globalPackages.rows.first(where: { $0.id == packageID }) else { throw AppError("全局包不存在，请刷新") }
+        let current = try GlobalPackages.checkedRecord(cached, nvmDir: nvmDir, semver: semver)
+        try validatePackageTarget(action: action, targetVersion: targetVersion, currentVersion: current.version)
+        let preview = GlobalPackagePreview(nvmDir: nvmDir, package: current, action: action,
+                                           targetVersion: action == .changeVersion ? targetVersion : nil,
+                                           allowScripts: action == .changeVersion && allowScripts)
+        // Check the exact runtime now, before presenting an executable action.
+        _ = try GlobalPackages.command(preview, environment: [:])
+        return preview
+    }
+
+    public func applyGlobalPackageChange(_ preview: GlobalPackagePreview) async throws -> String {
+        guard !closed else { throw AppError("应用正在关闭") }
+        guard activeID == nil else { throw AppError("已有任务正在运行") }
+        guard preview.nvmDir == nvmDir else { throw AppError("nvm 目录已变化，请重新确认") }
+        let current = try GlobalPackages.checkedRecord(preview.package, nvmDir: nvmDir, semver: semver)
+        try validatePackageTarget(action: preview.action, targetVersion: preview.targetVersion, currentVersion: current.version)
+        _ = try GlobalPackages.command(preview, environment: [:])
+        if let id = packageScanID { packageScans[id]?.cancel() }
+        packageScanID = nil; globalPackages.scanning = false
+        let task = InstallTask(version: current.nodeVersion,
+                               phase: preview.action == .remove ? "正在删除全局包" : "正在调整全局包版本",
+                               kind: preview.action == .remove ? "packageRemove" : "packageChangeVersion",
+                               packageName: current.name, targetVersion: preview.targetVersion)
+        tasks.insert(task, at: 0); tasks = Array(tasks.prefix(30)); activeID = task.id
+        active = Task { await self.runPackageChange(id: task.id, preview: preview) }
+        return task.id
+    }
+
+    private func validatePackageTarget(action: GlobalPackageAction, targetVersion: String?, currentVersion: String) throws {
+        guard action == .changeVersion else { return }
+        guard let targetVersion, semver.isExactVersion(targetVersion) else { throw AppError("请输入精确版本号，例如 2.4.1；不支持范围、标签或地址") }
+        guard targetVersion != currentVersion else { throw AppError("目标版本与当前版本相同") }
+    }
+
+    private func runPackageChange(id: String, preview: GlobalPackagePreview) async {
+        var filter: PackageLogFilter?
+        do {
+            try Task.checkCancellation()
+            var environment = ProcessInfo.processInfo.environment
+            for (name, value) in await Network.environment() { environment[name] = value }
+            try Task.checkCancellation()
+            guard preview.nvmDir == nvmDir else { throw AppError("nvm 目录已变化，请重新确认") }
+            _ = try GlobalPackages.checkedRecord(preview.package, nvmDir: nvmDir, semver: semver)
+            let command = try GlobalPackages.command(preview, environment: environment)
+            let logFilter = PackageLogFilter(environment: command.environment, prefix: command.directory)
+            filter = logFilter
+            let log: @Sendable (String) -> Void = { chunk in
+                let clean = logFilter.append(chunk)
+                if !clean.isEmpty { Task { await self.appendLog(id, clean) } }
+            }
+            appendLog(id, "Node \(preview.package.nodeVersion) · \(preview.package.name)\n" +
+                      (preview.action == .remove || !preview.allowScripts ? "已禁用安装脚本\n" : "仅本次允许安装脚本\n"))
+            let response: ProcessResult
+            if let packageExecutor { response = try await packageExecutor(command, log) }
+            else {
+                response = try await ProcessRunner.run(command.executable, arguments: command.arguments,
+                                                       environment: command.environment, directory: command.directory,
+                                                       timeout: 15 * 60, outputLimit: 8 * 1024 * 1024, onOutput: log)
+            }
+            if response.status != 0 {
+                appendLog(id, logFilter.append(response.stderr + "\n"))
+                throw AppError("全局包操作失败（退出码 \(response.status)），请查看任务日志")
+            }
+            try Task.checkCancellation()
+            if preview.action == .remove {
+                guard try !GlobalPackages.packageExists(preview) else { throw AppError("命令已结束，但全局包仍存在，请刷新检查") }
+            } else {
+                let current = GlobalPackages.record(nvmDir: nvmDir, version: preview.package.nodeVersion, name: preview.package.name, semver: semver)
+                guard current.editable, current.version == preview.targetVersion else { throw AppError("命令已结束，但包版本未达到目标，请刷新检查") }
+            }
+            update(id) { $0.state = "complete"; $0.phase = preview.action == .remove ? "全局包已删除" : "全局包版本已调整" }
+        } catch {
+            let cancelled = Task.isCancelled || error is CancellationError
+            let detail = cancelled ? "操作已取消" : (filter?.redact(error.localizedDescription) ?? error.localizedDescription)
+            let message = detail + "；可能已有部分变更，请检查刷新后的包列表"
+            update(id) { $0.state = cancelled ? "cancelled" : "failed"; $0.error = message; $0.phase = message }
+        }
+        if let filter { appendLog(id, filter.append("", finish: true)) }
+        await refreshPackageCacheAfterOperation()
+        update(id) { $0.endedAt = Date() }
+        if activeID == id { activeID = nil; active = nil }
     }
 
     private func installedVersions() throws -> [NodeRelease] {
@@ -155,7 +295,7 @@ public actor RuntimeService {
     public func install(version: String) async throws -> String {
         guard !closed else { throw AppError("应用正在关闭") }
         guard Self.validVersion(version) else { throw AppError("版本号无效") }
-        guard activeID == nil else { throw AppError("已有安装任务正在运行") }
+        guard activeID == nil else { throw AppError("已有任务正在运行") }
         guard !(try installedVersions()).contains(where: { $0.version == version }) else { throw AppError("此版本已安装") }
         guard catalog.contains(where: { $0.version == version && $0.files.contains(Self.architectureFile) }) else { throw AppError("此版本没有适用本机架构的官方二进制包") }
         let task = InstallTask(version: version)
@@ -215,6 +355,7 @@ public actor RuntimeService {
             do { try FileManager.default.removeItem(at: staging) }
             catch { appendLog(id, "\n临时目录清理失败：\(error.localizedDescription)") }
         }
+        await refreshPackageCacheAfterOperation()
         update(id) { $0.endedAt = Date() }
         if activeID == id { activeID = nil; active = nil }
     }
@@ -235,15 +376,21 @@ public actor RuntimeService {
 
     public func setNVMDirectory(_ path: String) throws {
         guard !closed else { throw AppError("应用正在关闭") }
-        guard activeID == nil else { throw AppError("安装期间不能修改 nvm 目录") }
+        guard activeID == nil else { throw AppError("任务运行期间不能修改 nvm 目录") }
         nvmDir = try Self.normalizedDirectory(path)
+        for scan in packageScans.values { scan.cancel() }
+        packageScanID = nil; packageVersions = nil; globalPackages = GlobalPackageSnapshot()
     }
 
     public func close() async {
         closed = true
         let sync = syncOperation, install = active
+        let scans = Array(packageScans.values)
         sync?.cancel(); install?.cancel()
+        scans.forEach { $0.cancel() }
         await sync?.value; await install?.value
+        for scan in scans { _ = await scan.value }
+        packageScans.removeAll(); packageScanID = nil; globalPackages.scanning = false
     }
 
     private func update(_ id: String, _ change: (inout InstallTask) -> Void) {
@@ -261,7 +408,7 @@ public actor RuntimeService {
         #endif
     }
     private static func validVersion(_ value: String) -> Bool {
-        value.count <= 64 && value.range(of: "^v[0-9]+\\.[0-9]+\\.[0-9]+$", options: .regularExpression) != nil
+        value.count <= 64 && value.range(of: "^v[0-9]+\\.[0-9]+\\.[0-9]+\\z", options: .regularExpression) != nil
     }
     private static func newer(_ a: String, _ b: String) -> Bool {
         let x = a.dropFirst().split(separator: ".").map { UInt64($0) ?? 0 }

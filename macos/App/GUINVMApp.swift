@@ -41,8 +41,8 @@ struct GUINVMApp: App {
                     Button(route.title) { model.navigate(route) }.keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
                 }
                 Divider()
-                Button("搜索项目或版本") { model.focusSearch() }.keyboardShortcut("k")
-                Button("刷新本机状态") { Task { await model.refresh() } }.keyboardShortcut("r")
+                Button("搜索项目、版本或全局包") { model.focusSearch() }.keyboardShortcut("k")
+                Button("刷新本机状态") { if model.route == .packages { model.refreshPackages() } else { Task { await model.refresh() } } }.keyboardShortcut("r")
                 Button(model.snapshot.scan.state == "running" ? "取消扫描" : "重新扫描") { model.toggleScan() }.keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }

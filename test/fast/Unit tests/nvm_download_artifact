@@ -53,3 +53,50 @@ EXPECTED_CODE=3
 [ "${ACTUAL}" = "${EXPECTED}" ] || die "expected >${EXPECTED}<, got >${ACTUAL}<"
 [ "${CODE}" = $EXPECTED_CODE ] || die "expected exit code ${EXPECTED_CODE}, got ${CODE}"
 
+
+# Downloads and integrity checks must finish successfully before returning a path.
+TEST_DIR="$(mktemp -d)" || die 'unable to create test directory'
+cleanup() { command rm -rf "${TEST_DIR}"; }
+trap cleanup EXIT
+NVM_DIR="${TEST_DIR}"
+PROGRESS_BAR=-s
+nvm_get_checksum() { nvm_echo expected; }
+nvm_compare_checksum() { return 1; }
+nvm_download() {
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = '-o' ]; then
+      shift
+      command printf '%s\n' 'test archive data' > "$1"
+      return
+    fi
+    shift
+  done
+  return 1
+}
+ACTUAL="$(nvm_download_artifact node binary std v22.0.0 2>/dev/null)"
+CODE=$?
+[ "${CODE}" = 6 ] && [ -z "${ACTUAL}" ] || die 'rejected archive returned a usable path'
+
+nvm_compare_checksum() { return 0; }
+ACTUAL="$(nvm_download_artifact node binary std v22.0.0 2>/dev/null)"
+CODE=$?
+[ "${CODE}" = 0 ] && [ -f "${ACTUAL}" ] || die 'verified archive was not returned'
+command rm -f "${ACTUAL}"
+nvm_download() { return 1; }
+ACTUAL="$(nvm_download_artifact node binary std v22.0.0 2>/dev/null)"
+CODE=$?
+[ "${CODE}" = 4 ] && [ -z "${ACTUAL}" ] || die 'failed download returned a usable path'
+
+nvm_get_checksum() { return 1; }
+ACTUAL="$(nvm_download_artifact node binary std v22.0.0 2>/dev/null)"
+CODE=$?
+[ "${CODE}" != 0 ] && [ -z "${ACTUAL}" ] || die 'failed checksum retrieval was accepted'
+
+# A producer failure must survive command substitution in both consumers.
+nvm_download_artifact() { nvm_echo ignored-path; return 6; }
+if nvm_install_binary node std v22.0.0 1 >/dev/null 2>&1; then
+  die 'binary installation ignored the archive producer failure'
+fi
+if nvm_install_source node std v22.0.0 1 '' >/dev/null 2>&1; then
+  die 'source installation ignored the archive producer failure'
+fi

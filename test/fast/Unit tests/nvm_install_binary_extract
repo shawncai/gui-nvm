@@ -67,4 +67,25 @@ nvm_supports_xz() {
 # Test linux tar.gz
 test_archi 'linux' 'v12.9.0' 'x64' 'bin/node' 'tar.gz' 'tar' '-czf'
 
+# OpenBSD must preserve decompressor failure even after complete tar output.
+command mkdir -p "${tmp_dir}/mock-bin" "${tmp_dir}/openbsd"
+command tar -cf "${tmp_dir}/empty.tar" -T /dev/null
+command printf '%s\n' '#!/bin/sh' 'cat "$NVM_TEST_EMPTY_TAR"' 'exit 1' > "${tmp_dir}/mock-bin/xzcat"
+command chmod +x "${tmp_dir}/mock-bin/xzcat"
+nvm_supports_xz() { return 0; }
+if NVM_TEST_EMPTY_TAR="${tmp_dir}/empty.tar" PATH="${tmp_dir}/mock-bin:${PATH}" nvm_extract_tarball openbsd v22.0.0 unused "${tmp_dir}/openbsd"; then
+  die 'failed decompressor was accepted'
+fi
+
+# A partially extracted archive must not become an installed version.
+nvm_extract_tarball() {
+  command mkdir -p "${4}/bin"
+  command printf '%s\n' partial > "${4}/bin/node"
+  return 1
+}
+if nvm_install_binary_extract linux v99.0.0 99.0.0 unused "${tmp_dir}/partial"; then
+  die 'failed extraction was accepted'
+fi
+[ ! -e "${NVM_DIR}/versions/node/v99.0.0" ] || die 'partial extraction was published'
+
 cleanup

@@ -1,0 +1,63 @@
+{
+  "task": "macOS 原生应用：全局包管理",
+  "items": [
+    {
+      "task": "确认范围、工作区与接口",
+      "done": true
+    },
+    {
+      "task": "实现包扫描、预览校验和隔离命令执行",
+      "done": true
+    },
+    {
+      "task": "接入原生全局包列表、详情与任务",
+      "done": true
+    },
+    {
+      "task": "补充隔离测试并完成原生测试与构建",
+      "done": true
+    },
+    {
+      "task": "隔离界面验收及使用文档",
+      "done": true
+    },
+    {
+      "task": "dot_clean 并关闭本任务测试进程",
+      "done": true
+    }
+  ],
+  "validation": {
+    "date": "2026-10-23",
+    "nativeTests": {
+      "total": 54,
+      "passed": 53,
+      "skipped": 1,
+      "failed": 0,
+      "newGlobalPackageTests": 20
+    },
+    "skippedTest": "官方网络安装 smoke：未设置 GUI_NVM_NETWORK_SMOKE=1",
+    "testCommand": "bash macos/scripts/test.sh",
+    "buildCommand": "bash macos/scripts/build.sh",
+    "releaseBuild": "passed",
+    "codeSignature": "passed",
+    "diffWhitespace": "passed",
+    "isolatedUI": [
+      "跨 Node 列表与筛选",
+      "包名搜索和空状态",
+      "键盘选择",
+      "只读工具链详情",
+      "拒绝 latest 输入",
+      "精确版本调整与结果刷新",
+      "单次脚本许可关闭重开后恢复禁用",
+      "执行删除与结果刷新",
+      "任务日志",
+      "Node 版本管理包入口"
+    ],
+    "realUserPackagesChanged": false,
+    "testApplicationClosed": true,
+    "taskProcessesStopped": true,
+    "temporaryFixturesRemoved": true,
+    "testLog": "/tmp/gui-nvm-global-packages-tests.log",
+    "buildLog": "/tmp/gui-nvm-global-packages-build.log"
+  }
+}

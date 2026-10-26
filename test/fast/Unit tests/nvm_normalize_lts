@@ -60,4 +60,8 @@ for INVALID in lts/-0 lts/-01 lts/-1+1 lts/-name lts/-10x lts/-99999999999999999
   fi
 done
 
+if nvm_alias lts/-1+1 >/dev/null 2>&1; then
+  die 'nvm_alias swallowed an invalid LTS offset'
+fi
+
 cleanup

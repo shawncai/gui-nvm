@@ -48,6 +48,7 @@ struct MainView: View {
                     switch model.route {
                     case .projects: ProjectsView(model: model)
                     case .versions: VersionsView(model: model)
+                    case .packages: GlobalPackagesView(model: model)
                     case .tasks: TasksView(model: model)
                     case .settings: SettingsView(model: model)
                     }
@@ -55,8 +56,11 @@ struct MainView: View {
                 footer
             }
             .background(.white)
-            .inspector(isPresented: Binding(get: { model.route == .projects && model.selectedProject != nil }, set: { if !$0 { model.selectedProjectID = nil } })) {
-                if let project = model.selectedProject {
+            .inspector(isPresented: Binding(get: { model.route == .projects && model.selectedProject != nil || model.route == .packages && model.selectedPackage != nil }, set: { if !$0 { if model.route == .packages { model.selectedPackageID = nil } else { model.selectedProjectID = nil } } })) {
+                if model.route == .packages, let package = model.selectedPackage {
+                    GlobalPackageInspector(model: model, package: package).id(package.id)
+                        .inspectorColumnWidth(min: 330, ideal: 370, max: 460)
+                } else if model.route == .projects, let project = model.selectedProject {
                     ProjectInspector(model: model, project: project).id(project.id)
                         .inspectorColumnWidth(min: 330, ideal: 370, max: 460)
                 }
@@ -67,6 +71,7 @@ struct MainView: View {
         .tint(AppTheme.accent)
         .toolbar { ToolbarItem(placement: .principal) { Text("gui-nvm").font(.system(size: 13, weight: .semibold)) } }
         .sheet(item: $model.confirmation) { confirmation in ConfirmationView(model: model, confirmation: confirmation) }
+        .sheet(item: $model.packageConfirmation) { preview in GlobalPackageConfirmationView(model: model, preview: preview).id(preview.id) }
         .alert("操作未完成", isPresented: Binding(get: { model.operationError != nil }, set: { if !$0 { model.operationError = nil } })) {
             Button("好", role: .cancel) { model.operationError = nil }
         } message: { Text(model.operationError ?? "") }
@@ -87,9 +92,9 @@ struct MainView: View {
             Button { model.focusSearch() } label: {
                 HStack { Image(systemName: "magnifyingglass"); Text("搜索…"); Spacer(); Text("⌘ K").font(.system(size: 11)).foregroundStyle(AppTheme.secondary) }
                     .padding(9).background(.white, in: RoundedRectangle(cornerRadius: 5)).overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.line))
-            }.buttonStyle(.plain).padding(.top, 10).accessibilityLabel("搜索项目或版本")
+            }.buttonStyle(.plain).padding(.top, 10).accessibilityLabel("搜索项目、版本或全局包")
             VStack(spacing: 4) {
-                ForEach([AppRoute.projects, .versions, .tasks]) { route in
+                ForEach([AppRoute.projects, .versions, .packages, .tasks]) { route in
                     sidebarItem(route)
                 }
             }
@@ -127,7 +132,7 @@ struct MainView: View {
         }.buttonStyle(.plain).accessibilityIdentifier("navigation-\(route.rawValue)")
     }
     private func count(for route: AppRoute) -> Int? {
-        switch route { case .projects: return model.snapshot.projects.count; case .versions: return model.snapshot.runtime.installed.count; case .tasks: let n = model.snapshot.runtime.tasks.filter { $0.state == "running" }.count; return n > 0 ? n : nil; case .settings: return nil }
+        switch route { case .projects: return model.snapshot.projects.count; case .versions: return model.snapshot.runtime.installed.count; case .packages: return model.snapshot.runtime.globalPackages.scannedAt == nil ? nil : model.snapshot.runtime.globalPackages.rows.count; case .tasks: let n = model.snapshot.runtime.tasks.filter { $0.state == "running" }.count; return n > 0 ? n : nil; case .settings: return nil }
     }
     private var header: some View {
         HStack(spacing: 12) {

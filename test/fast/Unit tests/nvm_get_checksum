@@ -42,4 +42,12 @@ OUTPUT="$(nvm_get_checksum iojs std foo bar tar.baz)"
 EXPECTED_OUTPUT="mirror-iojs-std/foo/SHASUMS.txt"
 [ "${OUTPUT}" = "${EXPECTED_OUTPUT}" ] || die "expected >${EXPECTED_OUTPUT}<, got >${OUTPUT}<"
 
+nvm_download() {
+  echo 'checksum bar.tar.baz'
+  return 1
+}
+if nvm_get_checksum node std foo bar tar.baz >/dev/null 2>&1; then
+  die 'failed checksum download was accepted'
+fi
+
 cleanup

@@ -191,6 +191,22 @@ public actor AppStore {
     public func syncCatalog() async { if !closing { await runtime.syncCatalog() } }
     public func install(version: String) async throws -> String { try ensureOpen(); return try await runtime.install(version: version) }
     public func cancelInstall(id: String) async throws { try await runtime.cancel(id: id) }
+    public func refreshGlobalPackages() async {
+        guard !closing, !environmentChanging else { return }
+        await runtime.refreshGlobalPackages()
+    }
+    public func previewGlobalPackageChange(packageID: String, action: GlobalPackageAction, targetVersion: String? = nil, allowScripts: Bool = false) async throws -> GlobalPackagePreview {
+        try ensureOpen()
+        let revision = environmentRevision
+        let preview = try await runtime.previewGlobalPackageChange(packageID: packageID, action: action, targetVersion: targetVersion, allowScripts: allowScripts)
+        try ensureOpen()
+        guard revision == environmentRevision else { throw AppError("nvm 目录已变化，请重新预览") }
+        return preview
+    }
+    public func applyGlobalPackageChange(_ preview: GlobalPackagePreview) async throws -> String {
+        try ensureOpen()
+        return try await runtime.applyGlobalPackageChange(preview)
+    }
     public func setDefault(version: String, expected: String) async throws { try ensureOpen(); try await runtime.setDefault(version: version, expected: expected) }
     public func setNVMDirectory(_ path: String) async throws {
         try ensureOpen()

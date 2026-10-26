@@ -3,13 +3,13 @@ import SwiftUI
 import GUINVMCore
 
 enum AppRoute: String, CaseIterable, Identifiable {
-    case projects, versions, tasks, settings
+    case projects, versions, packages, tasks, settings
     var id: String { rawValue }
     var title: String {
-        switch self { case .projects: return "项目"; case .versions: return "Node 版本"; case .tasks: return "安装任务"; case .settings: return "设置" }
+        switch self { case .projects: return "项目"; case .versions: return "Node 版本"; case .packages: return "全局包"; case .tasks: return "任务"; case .settings: return "设置" }
     }
     var symbol: String {
-        switch self { case .projects: return "doc.text"; case .versions: return "hexagon"; case .tasks: return "arrow.down.circle"; case .settings: return "gearshape" }
+        switch self { case .projects: return "doc.text"; case .versions: return "hexagon"; case .packages: return "shippingbox"; case .tasks: return "list.bullet.rectangle"; case .settings: return "gearshape" }
     }
 }
 
@@ -28,6 +28,8 @@ final class AppModel: ObservableObject {
     @Published var snapshot = AppSnapshot()
     @Published var route: AppRoute = .projects
     @Published var selectedProjectID: String?
+    @Published var selectedPackageID: String?
+    @Published var packageNodeFilter = ""
     @Published var search = ""
     @Published var projectFilter = "all"
     @Published var rootFilter = ""
@@ -38,7 +40,9 @@ final class AppModel: ObservableObject {
     @Published var toast: String?
     @Published var busy = false
     @Published var catalogSyncRequested = false
+    @Published var packageRefreshRequested = false
     @Published var confirmation: ActionConfirmation?
+    @Published var packageConfirmation: GlobalPackagePreview?
     @Published var dismissedNotices = Set<String>()
     private(set) var store: AppStore?
     private var initialized = false
@@ -48,6 +52,12 @@ final class AppModel: ObservableObject {
     private var toastTask: Task<Void, Never>?
 
     var selectedProject: ProjectRecord? { snapshot.projects.first { $0.id == selectedProjectID } }
+    var selectedPackage: GlobalPackageRecord? { snapshot.runtime.globalPackages.rows.first { $0.id == selectedPackageID } }
+    var visiblePackages: [GlobalPackageRecord] {
+        snapshot.runtime.globalPackages.rows.filter {
+            (packageNodeFilter.isEmpty || $0.nodeVersion == packageNodeFilter) && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search))
+        }
+    }
     var visibleProjects: [ProjectRecord] {
         snapshot.projects.filter { project in
             let matchesText = search.isEmpty || "\(project.name) \(project.path) \(project.requested)".localizedCaseInsensitiveContains(search)
@@ -57,7 +67,7 @@ final class AppModel: ObservableObject {
         }
     }
     var notices: [String] { snapshot.notices.filter { !dismissedNotices.contains($0) } }
-    var hasRunningInstall: Bool { snapshot.runtime.tasks.contains { $0.state == "running" } }
+    var hasRunningInstall: Bool { snapshot.runtime.tasks.contains { $0.endedAt == nil } }
     var architecture: String {
         #if arch(arm64)
         return "macOS · arm64"
@@ -100,9 +110,16 @@ final class AppModel: ObservableObject {
         refreshing = true
         defer { refreshing = false }
         do {
+            let previousNVMDirectory = snapshot.nvmDir
             snapshot = try await store.snapshot()
             connectionError = nil
             if let selectedProjectID, !snapshot.projects.contains(where: { $0.id == selectedProjectID }) { self.selectedProjectID = nil }
+            if previousNVMDirectory != snapshot.nvmDir {
+                selectedPackageID = nil; packageConfirmation = nil; packageNodeFilter = ""
+            }
+            if let selectedPackageID, !snapshot.runtime.globalPackages.rows.contains(where: { $0.id == selectedPackageID }) { self.selectedPackageID = nil }
+            if let preview = packageConfirmation, !snapshot.runtime.globalPackages.rows.contains(where: { $0.id == preview.package.id }) { packageConfirmation = nil }
+            if !packageNodeFilter.isEmpty, !snapshot.runtime.installed.contains(where: { $0.version == packageNodeFilter }) { packageNodeFilter = "" }
         } catch { connectionError = error.localizedDescription }
     }
 
@@ -111,10 +128,38 @@ final class AppModel: ObservableObject {
         else { await refresh() }
     }
 
-    func navigate(_ route: AppRoute) { self.route = route; search = "" }
+    func navigate(_ route: AppRoute) {
+        self.route = route; search = ""
+        if route == .packages { packageNodeFilter = ""; refreshPackages() }
+    }
     func focusSearch() {
-        if route != .projects && route != .versions { navigate(.projects) }
+        if route != .projects && route != .versions && route != .packages { navigate(.projects) }
         focusSearchRevision += 1
+    }
+    func showPackages(for nodeVersion: String) { navigate(.packages); packageNodeFilter = nodeVersion; selectedPackageID = nil }
+    func refreshPackages() {
+        guard let store, !packageRefreshRequested, !shuttingDown else { return }
+        packageRefreshRequested = true
+        Task {
+            await store.refreshGlobalPackages()
+            await refresh()
+            packageRefreshRequested = false
+        }
+    }
+    func previewPackageChange(_ package: GlobalPackageRecord, action: GlobalPackageAction, targetVersion: String? = nil) async {
+        guard let store, !busy, !shuttingDown else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let preview = try await store.previewGlobalPackageChange(packageID: package.id, action: action, targetVersion: targetVersion, allowScripts: false)
+            guard !shuttingDown, route == .packages, selectedPackageID == package.id, snapshot.nvmDir == preview.nvmDir else { return }
+            packageConfirmation = preview
+        } catch { operationError = error.localizedDescription }
+    }
+    func executePackageChange(_ preview: GlobalPackagePreview) async {
+        guard let store, !busy else { return }
+        let succeeded = await perform("全局包任务已创建") { _ = try await store.applyGlobalPackageChange(preview) }
+        if succeeded { packageConfirmation = nil; navigate(.tasks) }
     }
     func notify(_ text: String) {
         toastTask?.cancel(); toast = text

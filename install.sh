@@ -254,28 +254,37 @@ install_nvm_as_script() {
   NVM_BASH_COMPLETION_SOURCE="$(nvm_source script-nvm-bash-completion)"
 
   # Downloading to $INSTALL_DIR
-  mkdir -p "$INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR" || return 1
   if [ -f "$INSTALL_DIR/nvm.sh" ]; then
     nvm_echo "=> nvm is already installed in $INSTALL_DIR, trying to update the script"
   else
     nvm_echo "=> Downloading nvm as script to '$INSTALL_DIR'"
   fi
+  local NVM_SOURCE_PID
+  local NVM_EXEC_PID
+  local NVM_COMPLETION_PID
+  local NVM_DOWNLOAD_STATUS
+  NVM_DOWNLOAD_STATUS=0
   nvm_download -s "$NVM_SOURCE_LOCAL" -o "$INSTALL_DIR/nvm.sh" || {
     nvm_echo >&2 "Failed to download '$NVM_SOURCE_LOCAL'"
     return 1
   } &
+  NVM_SOURCE_PID=$!
   nvm_download -s "$NVM_EXEC_SOURCE" -o "$INSTALL_DIR/nvm-exec" || {
     nvm_echo >&2 "Failed to download '$NVM_EXEC_SOURCE'"
     return 2
   } &
+  NVM_EXEC_PID=$!
   nvm_download -s "$NVM_BASH_COMPLETION_SOURCE" -o "$INSTALL_DIR/bash_completion" || {
     nvm_echo >&2 "Failed to download '$NVM_BASH_COMPLETION_SOURCE'"
     return 2
   } &
-  for job in $(jobs -p | command sort)
-  do
-    wait "$job" || return $?
-  done
+  NVM_COMPLETION_PID=$!
+  # Wait for every owned downloader, including jobs that already completed.
+  wait "${NVM_SOURCE_PID}" || NVM_DOWNLOAD_STATUS=$?
+  wait "${NVM_EXEC_PID}" || NVM_DOWNLOAD_STATUS=$?
+  wait "${NVM_COMPLETION_PID}" || NVM_DOWNLOAD_STATUS=$?
+  [ "${NVM_DOWNLOAD_STATUS}" -eq 0 ] || return "${NVM_DOWNLOAD_STATUS}"
   chmod a+x "$INSTALL_DIR/nvm-exec" || {
     nvm_echo >&2 "Failed to mark '$INSTALL_DIR/nvm-exec' as executable"
     return 3
@@ -411,9 +420,9 @@ nvm_do_install() {
   if [ -z "${METHOD}" ]; then
     # Autodetect install method
     if nvm_has git; then
-      install_nvm_from_git
+      install_nvm_from_git || return $?
     elif nvm_has curl || nvm_has wget; then
-      install_nvm_as_script
+      install_nvm_as_script || return $?
     else
       nvm_echo >&2 'You need git, curl, or wget to install nvm'
       exit 1
@@ -423,13 +432,13 @@ nvm_do_install() {
       nvm_echo >&2 "You need git to install nvm"
       exit 1
     fi
-    install_nvm_from_git
+    install_nvm_from_git || return $?
   elif [ "${METHOD}" = 'script' ]; then
     if ! nvm_has curl && ! nvm_has wget; then
       nvm_echo >&2 "You need curl or wget to install nvm"
       exit 1
     fi
-    install_nvm_as_script
+    install_nvm_as_script || return $?
   else
     nvm_echo >&2 "The environment variable \$METHOD is set to \"${METHOD}\", which is not recognized as a valid installation method."
     exit 1

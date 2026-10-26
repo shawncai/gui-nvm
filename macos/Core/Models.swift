@@ -99,9 +99,53 @@ public struct InstallTask: Identifiable, Equatable, Sendable {
     public var log: String
     public var phase: String
     public var error: String?
-    public init(id: String = UUID().uuidString, version: String, state: String = "running", startedAt: Date = Date(), endedAt: Date? = nil, log: String = "", phase: String = "下载并校验", error: String? = nil) {
+    public var kind: String
+    public var packageName: String?
+    public var targetVersion: String?
+    public init(id: String = UUID().uuidString, version: String, state: String = "running", startedAt: Date = Date(), endedAt: Date? = nil, log: String = "", phase: String = "下载并校验", error: String? = nil, kind: String = "nodeInstall", packageName: String? = nil, targetVersion: String? = nil) {
         self.id = id; self.version = version; self.state = state; self.startedAt = startedAt
         self.endedAt = endedAt; self.log = log; self.phase = phase; self.error = error
+        self.kind = kind; self.packageName = packageName; self.targetVersion = targetVersion
+    }
+}
+
+public enum GlobalPackageAction: String, Sendable {
+    case remove, changeVersion
+}
+
+public struct GlobalPackageRecord: Identifiable, Equatable, Sendable {
+    public var id: String { SafeFile.projectID(path) }
+    public var nodeVersion: String
+    public var name: String
+    public var version: String
+    public var path: String
+    public var editable: Bool
+    public var issue: String?
+    public var revision: String
+    public init(nodeVersion: String, name: String, version: String = "", path: String, editable: Bool = false, issue: String? = nil, revision: String = "") {
+        self.nodeVersion = nodeVersion; self.name = name; self.version = version; self.path = path
+        self.editable = editable; self.issue = issue; self.revision = revision
+    }
+}
+
+public struct GlobalPackageSnapshot: Equatable, Sendable {
+    public var rows: [GlobalPackageRecord] = []
+    public var errors: [ScanIssue] = []
+    public var scanning = false
+    public var scannedAt: Date?
+    public init() {}
+}
+
+public struct GlobalPackagePreview: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let nvmDir: String
+    public let package: GlobalPackageRecord
+    public let action: GlobalPackageAction
+    public let targetVersion: String?
+    public var allowScripts: Bool
+    public init(id: UUID = UUID(), nvmDir: String, package: GlobalPackageRecord, action: GlobalPackageAction, targetVersion: String? = nil, allowScripts: Bool = false) {
+        self.id = id; self.nvmDir = nvmDir; self.package = package; self.action = action
+        self.targetVersion = targetVersion; self.allowScripts = allowScripts
     }
 }
 
@@ -113,6 +157,7 @@ public struct RuntimeSnapshot: Sendable {
     public var catalogAt: String?
     public var catalogError: String?
     public var syncing = false
+    public var globalPackages = GlobalPackageSnapshot()
     public init() {}
 }
 

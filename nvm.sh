@@ -1348,9 +1348,7 @@ nvm_alias() {
     nvm_err 'An alias is required.'
     return 1
   fi
-  if ! ALIAS="$(nvm_normalize_lts "${ALIAS}")"; then
-    return $?
-  fi
+  ALIAS="$(nvm_normalize_lts "${ALIAS}")" || return $?
 
   if [ -z "${ALIAS}" ]; then
     return 2
@@ -1758,9 +1756,7 @@ $VERSION_LIST
 EOF
 
   if [ -n "${LTS-}" ]; then
-    if ! LTS="$(nvm_normalize_lts "lts/${LTS}")"; then
-      return $?
-    fi
+    LTS="$(nvm_normalize_lts "lts/${LTS}")" || return $?
     LTS="${LTS#lts/}"
   fi
 
@@ -2620,7 +2616,18 @@ nvm_extract_tarball() {
 
   if [ "${NVM_OS}" = 'openbsd' ]; then
     if [ "${tar_compression_flag}" = 'J' ]; then
-      command xzcat "${TARBALL}" | "${tar}" -xf - -C "${TMPDIR}" -s '/[^\/]*\///' || return 1
+      # A pipeline would hide xzcat failures behind tar's exit status.
+      local NVM_TAR_TEMP
+      local NVM_TAR_STATUS
+      NVM_TAR_TEMP="$(command mktemp "${TMPDIR}.tar.XXXXXX")" || return 1
+      if ! command xzcat "${TARBALL}" > "${NVM_TAR_TEMP}"; then
+        command rm -f "${NVM_TAR_TEMP}"
+        return 1
+      fi
+      NVM_TAR_STATUS=0
+      command "${tar}" -xf "${NVM_TAR_TEMP}" -C "${TMPDIR}" -s '/[^\/]*\///' || NVM_TAR_STATUS=$?
+      command rm -f "${NVM_TAR_TEMP}"
+      [ "${NVM_TAR_STATUS}" -eq 0 ] || return "${NVM_TAR_STATUS}"
     else
       command "${tar}" -x${tar_compression_flag}f "${TARBALL}" -C "${TMPDIR}" -s '/[^\/]*\///' || return 1
     fi
@@ -2784,6 +2791,7 @@ nvm_use_if_needed() {
 
 nvm_install_npm_if_needed() {
   local VERSION
+  local NVM_NPM_INSTALL_SCRIPT
   VERSION="$(nvm_ls_current)"
   if ! nvm_has "npm"; then
     nvm_echo 'Installing npm...'
@@ -2793,10 +2801,12 @@ nvm_install_npm_if_needed() {
       if nvm_version_greater 0.2.3 "${VERSION}"; then
         nvm_err 'npm requires node v0.2.3 or higher'
       else
-        nvm_download -L https://npmjs.org/install.sh -o - | clean=yes npm_install=0.2.19 sh
+        NVM_NPM_INSTALL_SCRIPT="$(nvm_download -L https://npmjs.org/install.sh -o -)" || return 1
+        nvm_echo "${NVM_NPM_INSTALL_SCRIPT}" | clean=yes npm_install=0.2.19 sh
       fi
     else
-      nvm_download -L https://npmjs.org/install.sh -o - | clean=yes sh
+      NVM_NPM_INSTALL_SCRIPT="$(nvm_download -L https://npmjs.org/install.sh -o -)" || return 1
+      nvm_echo "${NVM_NPM_INSTALL_SCRIPT}" | clean=yes sh
     fi
   fi
   return $?

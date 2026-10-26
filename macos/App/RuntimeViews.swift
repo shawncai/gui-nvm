@@ -42,10 +42,13 @@ struct VersionsView: View {
                     TableColumn(tab == "installed" ? "项目引用" : "发布日期") { release in Text(tab == "installed" ? String(model.snapshot.projects.filter { $0.resolved == release.version }.count) : release.date).font(AppTheme.mono).foregroundStyle(AppTheme.secondary) }.width(min: 90, ideal: 110)
                     TableColumn("操作") { release in
                         if tab == "installed" {
-                            if isDefault(release) { Text("默认版本").font(.system(size: 12)).foregroundStyle(AppTheme.secondary) }
-                            else { Button("设为默认") { model.confirmDefault(release.version) }.controlSize(.small) }
-                        } else { Button("安装") { model.confirmInstall(release) }.controlSize(.small).disabled(model.hasRunningInstall).help(model.hasRunningInstall ? "已有安装任务正在运行" : "安装 \(release.version)") }
-                    }.width(min: 85, ideal: 95)
+                            HStack(spacing: 8) {
+                                Button("管理全局包") { model.showPackages(for: release.version) }.controlSize(.small).accessibilityLabel("管理 \(release.version) 的全局包")
+                                if isDefault(release) { Text("默认版本").font(.system(size: 12)).foregroundStyle(AppTheme.secondary) }
+                                else { Button("设为默认") { model.confirmDefault(release.version) }.controlSize(.small) }
+                            }
+                        } else { Button("安装") { model.confirmInstall(release) }.controlSize(.small).disabled(model.hasRunningInstall).help(model.hasRunningInstall ? "已有任务正在运行" : "安装 \(release.version)") }
+                    }.width(min: 205, ideal: 220)
                 }.tableStyle(.inset(alternatesRowBackgrounds: false)).accessibilityIdentifier("versionsTable")
                 if rows.count > limit { Button("加载更多 · \(rows.count - limit)") { limit += 100 }.buttonStyle(.bordered).padding(.vertical, 10) }
             }
@@ -69,23 +72,26 @@ struct TasksView: View {
     @ObservedObject var model: AppModel
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "安装任务") { Text(String(model.snapshot.runtime.tasks.count)).foregroundStyle(AppTheme.secondary) }
-            if model.snapshot.runtime.tasks.isEmpty { EmptyState(title: "暂无安装任务", symbol: "arrow.down.circle", actionTitle: "浏览版本库") { model.navigate(.versions) } }
+            PageHeader(title: "任务") { Text(String(model.snapshot.runtime.tasks.count)).foregroundStyle(AppTheme.secondary) }
+            if model.snapshot.runtime.tasks.isEmpty { EmptyState(title: "暂无任务", symbol: "list.bullet.rectangle", actionTitle: "浏览版本库") { model.navigate(.versions) } }
             else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(model.snapshot.runtime.tasks) { task in
                             VStack(alignment: .leading, spacing: 14) {
                                 HStack(spacing: 13) {
-                                    Image(systemName: "arrow.down.circle").font(.system(size: 20)).foregroundStyle(AppTheme.secondary)
-                                    Text(task.version).font(.system(size: 14, weight: .medium, design: .monospaced))
+                                    Image(systemName: task.kind == "packageRemove" ? "trash" : task.kind == "packageChangeVersion" ? "shippingbox" : "arrow.down.circle").font(.system(size: 20)).foregroundStyle(AppTheme.secondary)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(task.packageName ?? task.version).font(.system(size: 14, weight: .medium, design: .monospaced))
+                                        if task.kind != "nodeInstall" { Text("\(task.kind == "packageRemove" ? "删除全局包" : "调整版本") · Node \(task.version)\(task.targetVersion.map { " · 目标 \($0)" } ?? "")").font(.system(size: 12)).foregroundStyle(AppTheme.secondary) }
+                                    }
                                     Text(["running": "进行中", "complete": "已完成", "failed": "失败", "cancelled": "已取消"][task.state] ?? task.state).font(.system(size: 12)).foregroundStyle(task.state == "failed" ? Color.red : task.state == "complete" ? Color.green : AppTheme.secondary)
                                     Text(task.startedAt, format: .dateTime.hour().minute().second()).font(.system(size: 12)).foregroundStyle(AppTheme.secondary)
                                     Spacer()
-                                    if task.state == "running" { Button("取消安装") { model.cancelInstall(task) }.disabled(model.busy) }
+                                    if task.state == "running" { Button("取消任务") { model.cancelInstall(task) }.disabled(model.busy) }
                                 }
                                 HStack(spacing: 8) { if task.state == "running" { ProgressView().controlSize(.small) }; Text(task.phase).textSelection(.enabled) }.font(.system(size: 13)).foregroundStyle(AppTheme.secondary)
-                                DisclosureGroup("安装日志") {
+                                DisclosureGroup("任务日志") {
                                     ScrollView([.horizontal, .vertical]) { Text(task.log.isEmpty ? "等待输出" : task.log).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(12) }.frame(minHeight: 130, maxHeight: 320).background(Color(white: 0.97)).padding(.top, 8)
                                 }.font(.system(size: 12))
                             }.padding(.vertical, 21)
@@ -114,7 +120,7 @@ struct SettingsView: View {
                                 Text(displayPath(model.snapshot.nvmDir)).font(AppTheme.mono).textSelection(.enabled)
                                 Button { model.copy(model.snapshot.nvmDir) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("复制安装目录").accessibilityLabel("复制安装目录")
                                 Spacer(minLength: 0)
-                                Button("更改…") { model.chooseDirectory(for: "nvm") }.disabled(model.hasRunningInstall || model.busy).help(model.hasRunningInstall ? "安装结束后可更改目录" : "选择 nvm 安装目录")
+                                Button("更改…") { model.chooseDirectory(for: "nvm") }.disabled(model.hasRunningInstall || model.busy).help(model.hasRunningInstall ? "任务结束后可更改目录" : "选择 nvm 安装目录")
                             }
                         }
                         GridRow { Text("本机架构").foregroundStyle(AppTheme.secondary); Text(model.architecture) }

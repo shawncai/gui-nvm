@@ -46,4 +46,22 @@ EXPECTED_ARGS_PATH="$MOCKS_DIR/nvm_make_alias LTS alias calls.txt"
 EXPECTED_ARGS="$(cat "$EXPECTED_ARGS_PATH")"
 [ "${ARGS}" = "${EXPECTED_ARGS}" ] || die "nvm_make_alias called with >${ARGS}<; expected >${EXPECTED_ARGS}<"
 
+# Invalid version and codename fields must never reach alias creation.
+: > "${ALIAS_ARGS_PATH}"
+nvm_download() {
+  command printf '%s\n' 'version date files npm v8 uv zlib openssl modules lts security' \
+    'v22.0.0 date files npm v8 uv zlib openssl modules ../outside -' \
+    'v22.1.0/child date files npm v8 uv zlib openssl modules Test -' \
+    'v22.2.0 date files npm v8 uv zlib openssl modules Safe -'
+}
+nvm_ls_remote >/dev/null || die 'valid release was lost while filtering unsafe metadata'
+ARGS="$(cat "${ALIAS_ARGS_PATH}")"
+EXPECTED_ARGS='lts/*|lts/safe
+lts/safe|v22.2.0'
+[ "${ARGS}" = "${EXPECTED_ARGS}" ] || die "unchecked metadata reached alias creation: ${ARGS}"
+
+if NVM_LTS='-1+1' nvm_ls_remote >/dev/null 2>&1; then
+  die 'remote listing swallowed an invalid LTS offset'
+fi
+
 cleanup

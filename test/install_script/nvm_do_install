@@ -16,3 +16,27 @@ EXIT_CODE=$(echo $?)
 ACTUAL="$(NVM_DIR="${FILE_PATH}" nvm_do_install 2>&1)"
 EXPECTED="File \"${FILE_PATH}\" has the same name as installation directory."
 [ "${ACTUAL}" = "${EXPECTED}" ] || die "got <${ACTUAL}>, expected <${EXPECTED}>"
+
+# Do not source an existing or partial script after any installation failure.
+TEST_DIR="$(mktemp -d)" || die 'unable to create test directory'
+cleanup() { command rm -rf "${TEST_DIR}"; }
+trap cleanup EXIT
+command printf '%s\n' "nvm_echo 'partial script was sourced'" > "${TEST_DIR}/nvm.sh"
+(
+  nvm_has() { [ "$1" = curl ]; }
+  install_nvm_as_script() { return 23; }
+  ACTUAL="$(NVM_DIR="${TEST_DIR}" METHOD=script PROFILE=/dev/null nvm_do_install 2>&1)"
+  STATUS=$?
+  [ "${STATUS}" -eq 23 ] || die 'installer failure status was lost'
+  case "${ACTUAL}" in *'partial script was sourced'*) die 'partial installer was sourced' ;; esac
+) || die 'installation failure propagation failed'
+
+# Capture each child status even when a downloader completes immediately.
+nvm_download() {
+  command printf '%s\n' 'downloaded data' > "$4"
+  case "$4" in */nvm.sh) return 18 ;; esac
+}
+if NVM_DIR="${TEST_DIR}" install_nvm_as_script >/dev/null 2>&1; then
+  die 'failed background download was accepted'
+fi
+[ -f "${TEST_DIR}/nvm-exec" ] && [ -f "${TEST_DIR}/bash_completion" ] || die 'not all downloader jobs were waited for'

@@ -77,6 +77,18 @@ public final class Semver: @unchecked Sendable {
         }
     }
 
+    /// Package changes require an exact canonical release, never a tag, range,
+    /// URL, or npm package-spec protocol. Prerelease/build identifiers are valid.
+    public func isExactVersion(_ version: String) -> Bool {
+        guard version.utf8.count <= 256,
+              version.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?\\z", options: .regularExpression) != nil else { return false }
+        return queue.sync {
+            context.exception = nil
+            let result = context.objectForKeyedSubscript("__guiSemver")?.objectForKeyedSubscript("valid")?.call(withArguments: [version])
+            return context.exception == nil && result != nil && result?.isNull == false && result?.isUndefined == false
+        }
+    }
+
     public func satisfies(_ version: String, _ range: String) -> Bool {
         queue.sync {
             context.exception = nil

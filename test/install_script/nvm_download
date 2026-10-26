@@ -1,18 +1,34 @@
 #!/bin/sh
 
-cleanup () {
-  unset -f die cleanup
-}
-die () { echo "$@" ; cleanup ; exit 1; }
-
+die () { echo "$@"; exit 1; }
 NVM_ENV=testing \. ../../install.sh
 
-# nvm_download install.sh
-nvm_download "https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh" >/dev/null || die "nvm_download unable to download install.sh"
+# Stub both clients so argument and failure checks need no network connection.
+nvm_has() { [ "$1" = "${DOWNLOADER}" ]; }
+curl() { command printf '%s\n' "$#" "$@"; }
+wget() { command printf '%s\n' "$#" "$@"; }
+URL='https://example.invalid/install.sh'
+OUTPUT_FILE="path with 'quotes'; literal"
+DOWNLOADER=curl
+ACTUAL="$(nvm_download -L -s "${URL}" -o "${OUTPUT_FILE}")" || die 'curl invocation failed'
+EXPECTED="$(command printf '%s\n' 8 -q --fail --compressed -L -s "${URL}" -o "${OUTPUT_FILE}")"
+[ "${ACTUAL}" = "${EXPECTED}" ] || die 'curl changed argument boundaries'
 
-# nvm_download should fail to download wrong_install.sh
-if nvm_download "https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/wrong_install.sh" &>/dev/null; then
-  die "nvm_download should fail to download nonexistent file"
-fi
+DOWNLOADER=wget
+ACTUAL="$(nvm_download -L -C - --progress-bar -sS "${URL}" -o "${OUTPUT_FILE}")" || die 'wget invocation failed'
+EXPECTED="$(command printf '%s\n' 6 -c --progress=bar -nv "${URL}" -O "${OUTPUT_FILE}")"
+[ "${ACTUAL}" = "${EXPECTED}" ] || die 'wget changed argument boundaries'
+ACTUAL="$(nvm_download -o -s "${URL}")" || die 'wget output option failed'
+EXPECTED="$(command printf '%s\n' 3 -O -s "${URL}")"
+[ "${ACTUAL}" = "${EXPECTED}" ] || die 'wget translated an option value'
+if nvm_download -C 12 "${URL}" >/dev/null 2>&1; then die 'unsupported resume offset accepted'; fi
+if nvm_download -o >/dev/null 2>&1; then die 'missing output argument accepted'; fi
 
-cleanup
+curl() { return 23; }
+DOWNLOADER=curl
+nvm_download "${URL}" >/dev/null 2>&1
+[ "$?" -eq 23 ] || die 'curl failure status was lost'
+wget() { return 8; }
+DOWNLOADER=wget
+nvm_download "${URL}" >/dev/null 2>&1
+[ "$?" -eq 8 ] || die 'wget failure status was lost'

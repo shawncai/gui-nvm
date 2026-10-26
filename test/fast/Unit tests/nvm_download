@@ -1,30 +1,59 @@
 #!/bin/sh
 
-cleanup () {
-  unset -f die cleanup
-  docker stop httpbin && docker rm httpbin
-}
-die () { echo "$@" ; cleanup ; exit 1; }
+# Exercise both clients without a network connection or external service.
+die () { echo "$@"; exit 1; }
 
-\. ../../../nvm.sh
+\. ../../../nvm.sh --no-use
 
-set -ex
+nvm_has() { [ "$1" = "${DOWNLOADER}" ]; }
+nvm_curl_use_compression() { return 0; }
+curl() { command printf '%s\n' "$#" "$@"; }
+wget() { command printf '%s\n' "$#" "$@"; }
 
-# nvm_download install.sh
-nvm_download "https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh" >/dev/null || die "nvm_download unable to download install.sh"
+URL='https://example.invalid/node'
+OUTPUT_FILE="path with 'quotes'; literal"
+DOWNLOADER=curl
+ACTUAL="$(NVM_AUTH_HEADER='Bearer a+/= token' nvm_download -L -s "${URL}" -o "${OUTPUT_FILE}")" || die 'curl invocation failed'
+EXPECTED="$(command printf '%s\n' 10 -q --fail --compressed --header 'Authorization: Bearer a+/= token' -L -s "${URL}" -o "${OUTPUT_FILE}")"
+[ "${ACTUAL}" = "${EXPECTED}" ] || die 'curl arguments or credentials were changed'
 
-# nvm_download should fail to download wrong_install.sh
-! nvm_download "https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/wrong_install.sh" >/dev/null || die "nvm_download should fail to download no existing file"
+DOWNLOADER=wget
+ACTUAL="$(NVM_AUTH_HEADER='Bearer a+/= token' nvm_download -L -C - --progress-bar -sS "${URL}" -o "${OUTPUT_FILE}")" || die 'wget invocation failed'
+EXPECTED="$(command printf '%s\n' 8 --header 'Authorization: Bearer a+/= token' -c --progress=bar -nv "${URL}" -O "${OUTPUT_FILE}")"
+[ "${ACTUAL}" = "${EXPECTED}" ] || die 'wget arguments or credentials were changed'
 
-# nvm_download should pass when calling with auth header
-docker pull kennethreitz/httpbin && SHELL=bash docker run -d --name httpbin -p 80:80 kennethreitz/httpbin
-sleep 1 # wait for httpbin to start
-NVM_AUTH_HEADER="Bearer test-token" nvm_download "http://127.0.0.1/bearer" > /dev/null || die 'nvm_download with auth header should send correctly'
+# An output filename that resembles an option remains an output filename.
+ACTUAL="$(nvm_download -o -s "${URL}")" || die 'wget output option failed'
+EXPECTED="$(command printf '%s\n' 3 -O -s "${URL}")"
+[ "${ACTUAL}" = "${EXPECTED}" ] || die 'wget translated an option value'
 
-# nvm_download should fail when calling without auth header
-nvm_download "http://127.0.0.1/bearer" > /dev/null && die 'nvm_download with no auth header should not send the header and should fail'
+if nvm_download -C 12 "${URL}" >/dev/null 2>&1; then die 'unsupported resume offset accepted'; fi
+if nvm_download -o >/dev/null 2>&1; then die 'missing output argument accepted'; fi
+for DOWNLOADER in curl wget; do
+  if NVM_AUTH_HEADER='Bearer value
+Another: value' nvm_download "${URL}" >/dev/null 2>&1; then
+    die 'multiline authentication header accepted'
+  fi
+done
 
-# ensure quoted extra args remain quoted
-nvm_download "https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh" -o "; die quoted-command-not-quoted" || die 'command failed'
+curl() { return 23; }
+DOWNLOADER=curl
+nvm_download "${URL}" >/dev/null 2>&1
+[ "$?" -eq 23 ] || die 'curl failure status was lost'
+wget() { return 8; }
+DOWNLOADER=wget
+nvm_download "${URL}" >/dev/null 2>&1
+[ "$?" -eq 8 ] || die 'wget failure status was lost'
 
-cleanup
+# Downloaded npm scripts must not be handed to a shell before success.
+nvm_ls_current() { nvm_echo v22.0.0; }
+nvm_has() { return 1; }
+nvm_download() { nvm_echo '# incomplete installer'; return 18; }
+sh() { nvm_echo installer-shell-invoked; }
+ACTUAL="$(nvm_install_npm_if_needed 2>/dev/null)"
+STATUS=$?
+[ "${STATUS}" -ne 0 ] || die 'failed npm script download was accepted'
+case "${ACTUAL}" in *installer-shell-invoked*) die 'failed npm script reached sh' ;; esac
+nvm_download() { nvm_echo '# complete installer'; }
+ACTUAL="$(nvm_install_npm_if_needed 2>/dev/null)" || die 'successful npm script download rejected'
+case "${ACTUAL}" in *installer-shell-invoked*) ;; *) die 'successful npm installer was not invoked' ;; esac

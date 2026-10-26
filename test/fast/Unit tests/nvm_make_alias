@@ -23,3 +23,28 @@ for INVALID in ../outside lts/../../outside lts/.. . .. /absolute 'nested/name' 
     die "unsafe alias accepted: ${INVALID}"
   fi
 done
+
+TEST_DIR="$(mktemp -d)" || die 'unable to create test directory'
+cleanup() { command rm -rf "${TEST_DIR}"; }
+trap cleanup EXIT
+NVM_DIR="${TEST_DIR}/nvm"
+nvm_make_alias default v22.0.0 || die 'default alias rejected'
+nvm_make_alias team_node-v22 v22.0.0 || die 'normal custom alias rejected'
+nvm_make_alias lts/testing v22.0.0 || die 'normal LTS alias rejected'
+nvm_make_alias 'lts/*' lts/testing || die 'LTS wildcard alias rejected'
+[ "$(cat "${NVM_DIR}/alias/default")" = v22.0.0 ] || die 'alias contents were changed'
+
+command printf '%s\n' unchanged > "${TEST_DIR}/outside"
+command ln -s "${TEST_DIR}/outside" "${NVM_DIR}/alias/linked"
+if nvm_make_alias linked v22.0.0 >/dev/null 2>&1; then die 'symlink alias accepted'; fi
+[ "$(cat "${TEST_DIR}/outside")" = unchanged ] || die 'symlink destination was modified'
+
+command mv "${NVM_DIR}/alias/lts" "${TEST_DIR}/outside-lts"
+command ln -s "${TEST_DIR}/outside-lts" "${NVM_DIR}/alias/lts"
+if nvm_make_alias lts/testing v24.0.0 >/dev/null 2>&1; then die 'symlink LTS directory accepted'; fi
+[ "$(cat "${TEST_DIR}/outside-lts/testing")" = v22.0.0 ] || die 'external LTS alias was modified'
+
+command mv "${NVM_DIR}/alias" "${TEST_DIR}/outside-alias"
+command ln -s "${TEST_DIR}/outside-alias" "${NVM_DIR}/alias"
+if nvm_make_alias default v24.0.0 >/dev/null 2>&1; then die 'symlink alias directory accepted'; fi
+[ "$(cat "${TEST_DIR}/outside-alias/default")" = v22.0.0 ] || die 'external default alias was modified'

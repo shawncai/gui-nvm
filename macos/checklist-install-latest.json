@@ -1,0 +1,41 @@
+{
+  "task": "安装最新 gui-nvm 原生应用",
+  "date": "2026-10-26",
+  "items": [
+    {
+      "task": "核对源码、旧安装与构建位置",
+      "done": true
+    },
+    {
+      "task": "构建当前源码的 Release 应用",
+      "done": true
+    },
+    {
+      "task": "备份旧应用并安装到用户 Applications",
+      "done": true
+    },
+    {
+      "task": "验证安装签名、文件一致性与启动",
+      "done": true
+    },
+    {
+      "task": "dot_clean 并关闭本任务验证进程",
+      "done": true
+    }
+  ],
+  "validation": {
+    "build": "passed",
+    "signature": "passed",
+    "bundleContentsMatch": "passed",
+    "installedPath": "/Users/zhangcuncai/Applications/gui-nvm.app",
+    "backupPath": "/Users/zhangcuncai/Library/Application Support/gui-nvm/app-backups/2026-10-26-8d3ae0a983/gui-nvm.app",
+    "version": "0.1.0",
+    "buildNumber": "1",
+    "binarySHA256": "f41ac1e378dc6dc8e207c56b41aaec1e07ef0a056c5e364fb69afbf70044912d",
+    "buildLog": "/tmp/gui-nvm-install-latest-build.log",
+    "startup": "passed: process remained running and initialized isolated state.json and migration.json",
+    "guiInspection": "unavailable: Computer Use native pipe startup failed after retry",
+    "verificationProcessStopped": true,
+    "temporaryConfigurationRemoved": true
+  }
+}
